@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.18362.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>AppInventory</AssemblyName>
+    <Version>1.0.0</Version>
+    <Product>应用清单</Product>
+    <Description>本地软件清单、便携候选与关联目录的只读管理工具</Description>
+    <StartupObject>AppInventory.App</StartupObject>
+    <OutputPath>..\artifacts\inventory\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\upstream\source\UninstallTools\UninstallTools.csproj" />
+    <Content Include="..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\upstream\Licence.txt" Link="第三方声明\BCU-Licence.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\upstream\NOTICE" Link="第三方声明\BCU-NOTICE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="README.md" Link="使用说明.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="第三方修改说明.md" Link="第三方声明\修改说明.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="TaskScheduler-LICENSE.md" Link="第三方声明\TaskScheduler-LICENSE.md" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\artifacts\lab-fixture\TestApplication.exe" Link="测试组件\TestApplication.exe" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="BuildUninstallFixture" BeforeTargets="PrepareForBuild" Inputs="..\lab-fixture\Program.cs" Outputs="..\artifacts\lab-fixture\TestApplication.exe">
+    <MakeDir Directories="..\artifacts\lab-fixture" />
+    <Exec Command="&quot;$(SystemRoot)\Microsoft.NET\Framework64\v4.0.30319\csc.exe&quot; /nologo /target:exe /optimize+ /out:&quot;$(MSBuildProjectDirectory)\..\artifacts\lab-fixture\TestApplication.exe&quot; &quot;$(MSBuildProjectDirectory)\..\lab-fixture\Program.cs&quot;" />
+  </Target>
+  <Target Name="StampUninstallFixtureHash" BeforeTargets="GetAssemblyAttributes" DependsOnTargets="BuildUninstallFixture">
+    <GetFileHash Files="..\artifacts\lab-fixture\TestApplication.exe" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="UninstallFixtureHash" />
+    </GetFileHash>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>LabFixtureSHA256</_Parameter1>
+        <_Parameter2>%(UninstallFixtureHash.FileHash)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+</Project>

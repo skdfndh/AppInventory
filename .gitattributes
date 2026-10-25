@@ -1,0 +1,11 @@
+* text=auto eol=lf
+*.ps1 text eol=crlf
+# 补丁保留上游上下文与行尾，源码空白检查在依赖工作副本内执行。
+*.patch -text -whitespace
+*.png binary
+*.ico binary
+*.jpg binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.pdf binary

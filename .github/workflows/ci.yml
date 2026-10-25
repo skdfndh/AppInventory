@@ -1,0 +1,41 @@
+name: Windows 构建与验证
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+      - name: 还原固定版本 BCU
+        run: .\Initialize-Dependencies.ps1
+      - name: 自动检查与只读枚举
+        run: .\Verify-Inventory.ps1
+      - name: 生成自包含发行包
+        run: .\Build-Release.ps1
+      - name: 检查发行包
+        run: |
+          $latest = Get-ChildItem .\artifacts\release -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          $package = Get-ChildItem $latest.FullName -Filter '*.zip' -File | Select-Object -First 1
+          .\Verify-Release.ps1 -PackagePath $package.FullName
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AppInventory-win-x64
+          path: |
+            artifacts/release/**/*.zip
+            artifacts/release/**/*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14

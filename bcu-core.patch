@@ -1,0 +1,509 @@
+diff --git a/source/UninstallTools/Factory/ApplicationUninstallerFactory.cs b/source/UninstallTools/Factory/ApplicationUninstallerFactory.cs
+index ede0ac7..0a8919e 100644
+--- a/source/UninstallTools/Factory/ApplicationUninstallerFactory.cs
++++ b/source/UninstallTools/Factory/ApplicationUninstallerFactory.cs
+@@ -9,7 +9,6 @@ using System.Diagnostics;
+ using System.Linq;
+ using System.Threading.Tasks;
+ using Klocman.Extensions;
+-using Klocman.Forms.Tools;
+ using Klocman.IO;
+ using Klocman.Tools;
+ using UninstallTools.Factory.InfoAdders;
+@@ -172,7 +171,7 @@ namespace UninstallTools.Factory
+                     }
+                     catch (Exception ex)
+                     {
+-                        PremadeDialogs.GenericError(ex);
++                        UninstallToolsGlobalConfig.ReportError(ex);
+                     }
+                 }
+ 
+@@ -184,7 +183,7 @@ namespace UninstallTools.Factory
+                 }
+                 catch (Exception ex)
+                 {
+-                    PremadeDialogs.GenericError(ex);
++                    UninstallToolsGlobalConfig.ReportError(ex);
+                 }
+ 
+                 return mergedResults;
+@@ -272,7 +271,7 @@ namespace UninstallTools.Factory
+                 }
+                 catch (Exception ex)
+                 {
+-                    PremadeDialogs.GenericError(ex);
++                    UninstallToolsGlobalConfig.ReportError(ex);
+                 }
+             }
+ 
+@@ -289,4 +288,4 @@ namespace UninstallTools.Factory
+                 .DoForEach(x => { if (x != null) x.StartupEntries = null; }), startupEntries);
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/source/UninstallTools/Factory/FactoryTools.cs b/source/UninstallTools/Factory/FactoryTools.cs
+index e81b298..0ca9f8a 100644
+--- a/source/UninstallTools/Factory/FactoryTools.cs
++++ b/source/UninstallTools/Factory/FactoryTools.cs
+@@ -5,13 +5,11 @@
+ 
+ using System;
+ using System.Collections.Generic;
+-using System.ComponentModel;
+ using System.Diagnostics;
+ using System.IO;
+ using System.Linq;
+ using System.Text;
+ using Klocman.Extensions;
+-using Klocman.Forms.Tools;
+ 
+ namespace UninstallTools.Factory
+ {
+@@ -24,28 +22,32 @@ namespace UninstallTools.Factory
+         {
+             if (!File.Exists(filename)) return null;
+ 
+-            using (var process = Process.Start(new ProcessStartInfo(filename, args)
+-            {
+-                UseShellExecute = false,
+-                RedirectStandardOutput = true,
+-                RedirectStandardError = false,
+-                CreateNoWindow = true,
+-                StandardOutputEncoding = Encoding.Unicode
+-            }))
++            try
+             {
+-                try
++                using (var process = Process.Start(new ProcessStartInfo(filename, args)
+                 {
+-                    var sw = Stopwatch.StartNew();
+-                    var output = process?.StandardOutput.ReadToEnd();
+-                    Trace.WriteLine($"[Performance] Running command {filename} {args} took {sw.ElapsedMilliseconds}ms");
+-                    return process?.ExitCode == 0 ? output : null;
+-                }
+-                catch (Win32Exception ex)
++                    UseShellExecute = false,
++                    RedirectStandardOutput = true,
++                    RedirectStandardError = false,
++                    CreateNoWindow = true,
++                    StandardOutputEncoding = Encoding.Unicode
++                }))
+                 {
+-                    PremadeDialogs.GenericError(ex);
+-                    return null;
++                    if (process == null) throw new IOException("无法启动应用发现辅助程序。");
++                    var sw = Stopwatch.StartNew();
++                    var output = process.StandardOutput.ReadToEnd();
++                    process.WaitForExit();
++                    Trace.WriteLine($"[Performance] Running helper {filename} took {sw.ElapsedMilliseconds}ms");
++                    if (process.ExitCode != 0)
++                        throw new IOException($"应用发现辅助程序失败，退出码：{process.ExitCode}。");
++                    return output;
+                 }
+             }
++            catch (SystemException ex)
++            {
++                UninstallToolsGlobalConfig.ReportError(ex);
++                return null;
++            }
+         }
+ 
+         internal static IEnumerable<Dictionary<string, string>> ExtractAppDataSetsFromHelperOutput(string helperOutput)
+@@ -89,4 +91,4 @@ namespace UninstallTools.Factory
+             return !isPathRooted;
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/source/UninstallTools/Factory/InfoAdders/FastSizeGenerator.cs b/source/UninstallTools/Factory/InfoAdders/FastSizeGenerator.cs
+index ddfed46..7719067 100644
+--- a/source/UninstallTools/Factory/InfoAdders/FastSizeGenerator.cs
++++ b/source/UninstallTools/Factory/InfoAdders/FastSizeGenerator.cs
+@@ -10,21 +10,21 @@ using System.Text;
+ using System.Threading.Tasks;
+ using Klocman.Extensions;
+ using Klocman.IO;
+-using Scripting;
+ using File = System.IO.File;
+ 
+ namespace UninstallTools.Factory.InfoAdders
+ {
+     public class FastSizeGenerator : IMissingInfoAdder
+     {
+-        private static readonly FileSystemObjectClass _fileSystemObject;
++        private static readonly dynamic _fileSystemObject;
+         private static bool _everythingAvailable;
+ 
+         static FastSizeGenerator()
+         {
+             try
+             {
+-                _fileSystemObject = new FileSystemObjectClass();
++                // 运行时创建系统 COM 对象，避免构建依赖完整 Visual Studio 的类型库导入工具。
++                _fileSystemObject = Activator.CreateInstance(Type.GetTypeFromProgID("Scripting.FileSystemObject", true));
+             }
+             catch (Exception ex)
+             {
+diff --git a/source/UninstallTools/Junk/Containers/FileSystemJunk.cs b/source/UninstallTools/Junk/Containers/FileSystemJunk.cs
+index c857433..051bc28 100644
+--- a/source/UninstallTools/Junk/Containers/FileSystemJunk.cs
++++ b/source/UninstallTools/Junk/Containers/FileSystemJunk.cs
+@@ -6,7 +6,6 @@
+ using System;
+ using System.IO;
+ using Klocman.Tools;
+-using Microsoft.VisualBasic.FileIO;
+ 
+ namespace UninstallTools.Junk.Containers
+ {
+@@ -21,19 +20,17 @@ namespace UninstallTools.Junk.Containers
+ 
+         public override void Backup(string backupDirectory)
+         {
+-            // Items are deleted to the recycle bin
++            // 宿主提供的文件回收处理器必须负责保留恢复能力。
+         }
+ 
+         public override void Delete()
+         {
+-            if (Path is DirectoryInfo)
+-                FileSystem.DeleteDirectory(Path.FullName, UIOption.OnlyErrorDialogs,
+-                    RecycleOption.SendToRecycleBin, UICancelOption.DoNothing);
+-            else if (Path is FileInfo)
+-                FileSystem.DeleteFile(Path.FullName, UIOption.OnlyErrorDialogs,
+-                    RecycleOption.SendToRecycleBin, UICancelOption.DoNothing);
+-            else
+-                throw new NotImplementedException("Unknown FileSystemInfo implementation");
++            if (Path is not DirectoryInfo && Path is not FileInfo)
++                throw new NotSupportedException("无法识别的文件系统条目。");
++
++            var handler = UninstallToolsGlobalConfig.FileDeletionHandler
++                ?? throw new InvalidOperationException("宿主未提供文件回收处理器，已拒绝清理。");
++            handler(Path);
+         }
+ 
+         public override string GetDisplayName()
+@@ -49,4 +46,4 @@ namespace UninstallTools.Junk.Containers
+                 throw new FileNotFoundException(null, Path.FullName);
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/source/UninstallTools/Junk/Containers/RunProcessJunk.cs b/source/UninstallTools/Junk/Containers/RunProcessJunk.cs
+index e3fcc14..c307f30 100644
+--- a/source/UninstallTools/Junk/Containers/RunProcessJunk.cs
++++ b/source/UninstallTools/Junk/Containers/RunProcessJunk.cs
+@@ -5,7 +5,7 @@
+ 
+ using System;
+ using System.Diagnostics;
+-using Klocman.Forms.Tools;
++using System.IO;
+ using Klocman.Tools;
+ 
+ namespace UninstallTools.Junk.Containers
+@@ -32,13 +32,18 @@ namespace UninstallTools.Junk.Containers
+             try
+             {
+                 var info = ProcessToStart.ToProcessStartInfo();
+-                info.WindowStyle = ProcessWindowStyle.Minimized;
++                info.WindowStyle = ProcessWindowStyle.Hidden;
+                 info.UseShellExecute = true;
+-                Process.Start(info)?.WaitForExit();
++                using var process = Process.Start(info)
++                    ?? throw new IOException("无法启动残留清理辅助程序。");
++                process.WaitForExit();
++                if (process.ExitCode != 0)
++                    throw new IOException($"残留清理辅助程序失败，退出码：{process.ExitCode}。");
+             }
+             catch (SystemException ex)
+             {
+-                Trace.WriteLine($"Failed to delete junk {GetDisplayName()} - {ex}");
++                UninstallToolsGlobalConfig.ReportError(ex);
++                throw;
+             }
+         }
+ 
+@@ -55,8 +60,8 @@ namespace UninstallTools.Junk.Containers
+             }
+             catch (SystemException ex)
+             {
+-                PremadeDialogs.GenericError(ex);
++                UninstallToolsGlobalConfig.ReportError(ex);
+             }
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/source/UninstallTools/Junk/JunkManager.cs b/source/UninstallTools/Junk/JunkManager.cs
+index c1c9daf..f36b778 100644
+--- a/source/UninstallTools/Junk/JunkManager.cs
++++ b/source/UninstallTools/Junk/JunkManager.cs
+@@ -8,7 +8,6 @@ using System.Collections.Generic;
+ using System.Diagnostics;
+ using System.Linq;
+ using Klocman.Extensions;
+-using Klocman.Forms.Tools;
+ using Klocman.Tools;
+ using UninstallTools.Junk.Containers;
+ using UninstallTools.Properties;
+@@ -104,7 +103,16 @@ namespace UninstallTools.Junk
+             {
+                 try
+                 {
+-                    AddRange(knownFolderstype.GetProperties().Attempt(p => ((Windows.Storage.StorageFolder)p.GetValue(null))!.Path));
++                    AddRange(knownFolderstype.GetProperties().Select(property =>
++                    {
++                        try { return ((Windows.Storage.StorageFolder)property.GetValue(null))?.Path; }
++                        catch (Exception ex)
++                        {
++                            // 已停用的系统目录可能不可用，保留诊断信息并继续保护其余目录。
++                            Trace.WriteLine($"无法读取系统目录 {property.Name}: {ex}");
++                            return null;
++                        }
++                    }));
+                 }
+                 catch (Exception ex)
+                 {
+@@ -118,24 +126,43 @@ namespace UninstallTools.Junk
+         public static IEnumerable<IJunkResult> FindJunk(IEnumerable<ApplicationUninstallerEntry> targets,
+             ICollection<ApplicationUninstallerEntry> allUninstallers, ListGenerationProgress.ListGenerationCallback progressCallback)
+         {
+-            progressCallback(new ListGenerationProgress(-1, 0, Localisation.Junk_Progress_Startup));
+-
+             var scanners = ReflectionTools.GetTypesImplementingBase<IJunkCreator>()
+                 .Attempt(Activator.CreateInstance)
+                 .Cast<IJunkCreator>()
+                 .ToList();
+ 
++            return FindJunk(targets, allUninstallers, progressCallback, scanners);
++        }
++
++        // 宿主可选择已验证的扫描器，避免后台测试或单项操作隐式扫描整台电脑。
++        public static IEnumerable<IJunkResult> FindJunk(IEnumerable<ApplicationUninstallerEntry> targets,
++            ICollection<ApplicationUninstallerEntry> allUninstallers,
++            ListGenerationProgress.ListGenerationCallback progressCallback, IEnumerable<IJunkCreator> scanners)
++        {
++            ArgumentNullException.ThrowIfNull(targets);
++            ArgumentNullException.ThrowIfNull(allUninstallers);
++            ArgumentNullException.ThrowIfNull(progressCallback);
++            ArgumentNullException.ThrowIfNull(scanners);
++            progressCallback(new ListGenerationProgress(-1, 0, Localisation.Junk_Progress_Startup));
++
++            var readyScanners = new List<IJunkCreator>();
+             foreach (var junkCreator in scanners)
+             {
+-                junkCreator.Setup(allUninstallers);
++                try
++                {
++                    junkCreator.Setup(allUninstallers);
++                    readyScanners.Add(junkCreator);
++                }
++                catch (OperationCanceledException) { throw; }
++                catch (SystemException ex) { UninstallToolsGlobalConfig.ReportError(ex); }
+             }
+ 
+             var results = new List<IJunkResult>();
+             var targetEntries = targets as IList<ApplicationUninstallerEntry> ?? targets.ToList();
+             var progress = 0;
+-            foreach (var junkCreator in scanners)
++            foreach (var junkCreator in readyScanners)
+             {
+-                var scannerProgress = new ListGenerationProgress(progress++, scanners.Count, junkCreator.CategoryName);
++                var scannerProgress = new ListGenerationProgress(progress++, readyScanners.Count, junkCreator.CategoryName);
+ 
+                 var entryProgress = 0;
+                 foreach (var target in targetEntries)
+@@ -144,7 +171,8 @@ namespace UninstallTools.Junk
+                     progressCallback(scannerProgress);
+ 
+                     try { results.AddRange(junkCreator.FindJunk(target)); }
+-                    catch (SystemException ex) { PremadeDialogs.GenericError(ex); }
++                    catch (OperationCanceledException) { throw; }
++                    catch (SystemException ex) { UninstallToolsGlobalConfig.ReportError(ex); }
+                 }
+             }
+ 
+@@ -164,4 +192,4 @@ namespace UninstallTools.Junk
+             return CleanUpResults(pfScanner.FindAllJunk().ToList());
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/source/UninstallTools/Startup/Normal/StartupEntryFactory.cs b/source/UninstallTools/Startup/Normal/StartupEntryFactory.cs
+index 541f239..32a1c38 100644
+--- a/source/UninstallTools/Startup/Normal/StartupEntryFactory.cs
++++ b/source/UninstallTools/Startup/Normal/StartupEntryFactory.cs
+@@ -10,7 +10,6 @@ using System.IO;
+ using System.Linq;
+ using System.Security;
+ using Klocman.Extensions;
+-using Klocman.Forms.Tools;
+ using Klocman.Native;
+ using Klocman.Tools;
+ 
+@@ -78,7 +77,7 @@ namespace UninstallTools.Startup.Normal
+                 }
+                 catch (Exception ex)
+                 {
+-                    PremadeDialogs.GenericError(ex);
++                    UninstallToolsGlobalConfig.ReportError(ex);
+                     continue;
+                 }
+                 yield return result;
+@@ -109,16 +108,16 @@ namespace UninstallTools.Startup.Normal
+                             }
+                             catch (Exception ex)
+                             {
+-                                PremadeDialogs.GenericError(ex);
++                                UninstallToolsGlobalConfig.ReportError(ex);
+                             }
+                         }
+                     }
+                 }
+             }
+-            catch (ArgumentException)
++            catch (ArgumentException ex)
+             {
+-                // Key doesn't exist, create it
+-                RegistryTools.CreateSubKeyRecursively(point.Path)?.Close();
++                // 应用发现只读取状态，遇到异常也不应创建系统启动项注册表键。
++                UninstallToolsGlobalConfig.ReportError(ex);
+             }
+             catch (SecurityException ex)
+             {
+@@ -128,4 +127,4 @@ namespace UninstallTools.Startup.Normal
+             return results;
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/source/UninstallTools/Startup/Task/TaskEntry.cs b/source/UninstallTools/Startup/Task/TaskEntry.cs
+index 14c96d9..ac262ef 100644
+--- a/source/UninstallTools/Startup/Task/TaskEntry.cs
++++ b/source/UninstallTools/Startup/Task/TaskEntry.cs
+@@ -5,7 +5,6 @@
+ 
+ using System;
+ using System.IO;
+-using Klocman.Forms.Tools;
+ using Microsoft.Win32.TaskScheduler;
+ using UninstallTools.Properties;
+ 
+@@ -47,7 +46,8 @@ namespace UninstallTools.Startup.Task
+                 }
+                 catch (Exception e)
+                 {
+-                    PremadeDialogs.GenericError(e);
++                    UninstallToolsGlobalConfig.ReportError(e);
++                    throw;
+                 }
+             }
+         }
+@@ -75,4 +75,4 @@ namespace UninstallTools.Startup.Task
+                 SourceTask.Xml);
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/source/UninstallTools/UninstallTools.csproj b/source/UninstallTools/UninstallTools.csproj
+index 724576e..25e489e 100644
+--- a/source/UninstallTools/UninstallTools.csproj
++++ b/source/UninstallTools/UninstallTools.csproj
+@@ -7,7 +7,6 @@
+ 
+ 	<ItemGroup>
+ 		<ProjectReference Include="..\KlocTools\KlocTools.csproj" />
+-		<ProjectReference Include="..\ObjectListView\ObjectListView.csproj" />
+ 	</ItemGroup>
+ 
+ 	<ItemGroup>
+@@ -15,21 +14,14 @@
+ 	</ItemGroup>
+ 
+ 	<ItemGroup>
+-		<PackageReference Include="Microsoft.VisualBasic" Version="10.3.0" />
+ 		<PackageReference Include="System.Management" Version="[8.*,9)" />
+ 		<PackageReference Include="TaskScheduler" Version="2.12.2" />
+ 	</ItemGroup>
+ 	
+ 	<ItemGroup>
+-		<COMReference Include="Scripting">
+-			<Guid>{420B2830-E718-11CF-893D-00A0C9054228}</Guid>
+-			<VersionMajor>1</VersionMajor>
+-			<VersionMinor>0</VersionMinor>
+-			<Lcid>0</Lcid>
+-			<WrapperTool>tlbimp</WrapperTool>
+-			<Isolated>False</Isolated>
+-			<EmbedInteropTypes>false</EmbedInteropTypes>
+-		</COMReference>
++		<!-- 界面由宿主提供，避免后台核心库包含窗口和控件。 -->
++		<Compile Remove="Dialogs\**\*.cs;Controls\**\*.cs" />
++		<EmbeddedResource Remove="Dialogs\**\*.resx;Controls\**\*.resx" />
+ 	</ItemGroup>
+ 	
+ 	<ItemGroup>
+@@ -55,4 +47,4 @@
+ 	    <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+ 	  </EmbeddedResource>
+ 	</ItemGroup>
+-</Project>
+\ No newline at end of file
++</Project>
+diff --git a/source/UninstallTools/UninstallToolsGlobalConfig.cs b/source/UninstallTools/UninstallToolsGlobalConfig.cs
+index 0c9a2f6..b08a59c 100644
+--- a/source/UninstallTools/UninstallToolsGlobalConfig.cs
++++ b/source/UninstallTools/UninstallToolsGlobalConfig.cs
+@@ -14,6 +14,18 @@ namespace UninstallTools
+ {
+     public static class UninstallToolsGlobalConfig
+     {
++        // 回调可能来自工作线程，由宿主负责切换到自己的界面线程。
++        public static Action<Exception> ErrorCallback { get; set; }
++
++        // 文件回收由宿主控制，避免核心库显示系统对话框或自行决定永久删除。
++        public static Action<FileSystemInfo> FileDeletionHandler { get; set; }
++
++        internal static void ReportError(Exception error)
++        {
++            Trace.WriteLine(error);
++            ErrorCallback?.Invoke(error);
++        }
++
+         static UninstallToolsGlobalConfig()
+         {
+             AssemblyLocation = Assembly.GetExecutingAssembly().Location;
+@@ -320,4 +332,4 @@ namespace UninstallTools
+         public static string UninstallerAutomatizerPath { get; }
+         public static bool UninstallerAutomatizerExists { get; }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/source/UninstallTools/Uninstaller/NoWayToUninstallException.cs b/source/UninstallTools/Uninstaller/NoWayToUninstallException.cs
+index d7a80e8..b295b1e 100644
+--- a/source/UninstallTools/Uninstaller/NoWayToUninstallException.cs
++++ b/source/UninstallTools/Uninstaller/NoWayToUninstallException.cs
+@@ -1,10 +1,10 @@
+-﻿using Klocman.Forms.Tools;
++﻿using System;
+ using UninstallTools.Properties;
+ 
+ namespace UninstallTools.Uninstaller;
+ 
+ /// <summary>
+-/// Thrown when there are no usable ways of uninstalling an application entry.
++/// 没有可用卸载方式时，让宿主接收异常并决定如何提示用户。
+ /// </summary>
+ /// <inheritdoc />
+-public sealed class NoWayToUninstallException() : PremadeDialogs.NotSendableException(Localisation.UninstallError_Nowaytouninstall);
++public sealed class NoWayToUninstallException() : InvalidOperationException(Localisation.UninstallError_Nowaytouninstall);

@@ -1,0 +1,214 @@
+<Window x:Class="AppInventory.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="应用清单 · 只读清单" Width="1380" Height="880" MinWidth="1100" MinHeight="680"
+        WindowStartupLocation="CenterScreen" Background="#F4F5F1"
+        FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="13" Foreground="#23362F"
+        UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display">
+    <Window.Resources>
+        <SolidColorBrush x:Key="Accent" Color="#246B52" />
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="White" /><Setter Property="Foreground" Value="#254337" />
+            <Setter Property="BorderBrush" Value="#CCD7CF" /><Setter Property="Padding" Value="16,9" />
+            <Setter Property="Cursor" Value="Hand" /><Setter Property="MinHeight" Value="38" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+                <Border x:Name="Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="1" CornerRadius="7" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <ControlTemplate.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Border" Property="Background" Value="#E8F0E9" /></Trigger>
+                    <Trigger Property="IsPressed" Value="True"><Setter TargetName="Border" Property="Background" Value="#D9E7DC" /></Trigger>
+                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+                </ControlTemplate.Triggers>
+            </ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F6F8F5" /><Setter Property="Foreground" Value="#54685C" />
+            <Setter Property="Padding" Value="14,13" /><Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="BorderBrush" Value="#E5EBE4" /><Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0" /><Setter Property="Padding" Value="14,9" />
+            <Setter Property="VerticalContentAlignment" Value="Center" /><Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="DataGridCell">
+                <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                    <ContentPresenter VerticalAlignment="Center" />
+                </Border>
+            </ControlTemplate></Setter.Value></Setter>
+            <Style.Triggers><Trigger Property="IsSelected" Value="True">
+                <Setter Property="Background" Value="#E1EFE5" /><Setter Property="Foreground" Value="#20392B" />
+            </Trigger></Style.Triggers>
+        </Style>
+        <Style TargetType="DataGridRow">
+            <Setter Property="MinHeight" Value="57" /><Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#EFF2ED" /><Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#F1F6F0" /></Trigger>
+                <Trigger Property="IsSelected" Value="True"><Setter Property="Background" Value="#E1EFE5" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ValueText" TargetType="TextBlock">
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" /><Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}" />
+        </Style>
+        <Style x:Key="DetailLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#65766B" /><Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,20,0,6" />
+        </Style>
+    </Window.Resources>
+    <Grid Margin="30,24,30,20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid>
+            <StackPanel>
+                <TextBlock Text="本地软件档案" Foreground="#597064" FontSize="12" Margin="1,0,0,8" />
+                <TextBlock Text="应用清单" FontSize="30" FontWeight="SemiBold" />
+                <TextBlock Text="看清电脑里装了什么，以及它们放在哪里。" Foreground="#617568" Margin="1,8,0,0" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Border Background="#E4EEE4" CornerRadius="12" Padding="12,6" Margin="0,0,14,0" VerticalAlignment="Center">
+                    <TextBlock Text="只读清单" Foreground="#2A6148" FontSize="12" />
+                </Border>
+                <Button x:Name="ScanButton" Content="扫描范围…" Click="Scan_Click" Margin="0,0,10,0" AutomationProperties.Name="选择便携软件及其他盘扫描范围" />
+                <Button x:Name="RefreshButton" Content="刷新清单" Click="Refresh_Click" AutomationProperties.Name="刷新应用清单" ToolTip="重新读取安装记录（F5）" />
+                <Button x:Name="ExportButton" Content="导出结果…" Click="Export_Click" Margin="10,0,0,0" AutomationProperties.Name="导出当前筛选结果" ToolTip="导出 CSV 或 JSON；文件包含软件名称和本地路径" />
+                <Button Content="卸载测试…" Click="UninstallLab_Click" Margin="10,0,0,0" AutomationProperties.Name="打开专用测试应用卸载验证" ToolTip="仅操作本工具创建的测试应用，清单中的现有软件保持只读" />
+            </StackPanel>
+        </Grid>
+        <Grid Grid.Row="1" Margin="0,25,0,18">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <Border Background="White" BorderBrush="#CED8CE" BorderThickness="1" CornerRadius="8" MaxWidth="480" HorizontalAlignment="Left" Width="440">
+                <Grid Margin="13,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock Text="⌕" FontSize="23" Foreground="#718478" VerticalAlignment="Center" />
+                    <TextBox x:Name="SearchBox" Grid.Column="1" Background="Transparent" BorderThickness="0" Padding="2,11"
+                             VerticalContentAlignment="Center" TextChanged="Search_Changed" AutomationProperties.Name="搜索名称、版本、发布者或路径"
+                             AutomationProperties.AutomationId="SearchBox" />
+                    <TextBlock Grid.Column="1" Text="搜索名称、版本、发布者或路径" Foreground="#758378" IsHitTestVisible="False" Margin="3,0,0,0" VerticalAlignment="Center">
+                        <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers><DataTrigger Binding="{Binding Text.Length, ElementName=SearchBox}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                        </Style></TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Grid.Column="2" Text="Ctrl + F" Foreground="#829083" FontSize="10" VerticalAlignment="Center" Margin="8,0,0,0" />
+                </Grid>
+            </Border>
+            <TextBlock x:Name="CountText" Grid.Column="1" VerticalAlignment="Center" Foreground="#586D5F" Text="正在读取应用…" />
+        </Grid>
+        <Grid Grid.Row="2" Margin="0,0,0,15">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <ComboBox x:Name="SourceFilter" SelectedIndex="0" Width="150" Padding="8,5" SelectionChanged="Filter_Changed" AutomationProperties.Name="按应用来源筛选">
+                    <ComboBoxItem Content="全部来源" /><ComboBoxItem Content="桌面应用" /><ComboBoxItem Content="商店 / MSIX 应用" /><ComboBoxItem Content="便携 / 未注册候选" />
+                </ComboBox>
+                <CheckBox x:Name="RelatedOnly" Content="仅有关联位置" Margin="18,0,0,0" VerticalAlignment="Center" Checked="Filter_Changed" Unchecked="Filter_Changed" />
+                <CheckBox x:Name="UnknownOnly" Content="用途待核实" Margin="18,0,0,0" VerticalAlignment="Center" Checked="Filter_Changed" Unchecked="Filter_Changed" />
+            </StackPanel>
+            <TextBlock x:Name="SnapshotText" Grid.Column="1" Text="尚未扫描目录" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="550" FontSize="11" Foreground="#617568" Margin="20,0,0,0" />
+        </Grid>
+        <ProgressBar x:Name="LoadingBar" Grid.Row="3" Height="3" IsIndeterminate="True" Foreground="#52866B" Background="#E7ECE3" Margin="0,0,0,12" />
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="18" /><ColumnDefinition Width="320" /></Grid.ColumnDefinitions>
+            <Border Background="White" CornerRadius="10" BorderBrush="#DEE5DB" BorderThickness="1" ClipToBounds="True">
+                <Grid>
+                    <DataGrid x:Name="AppsGrid" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                              CanUserReorderColumns="False" SelectionMode="Single" SelectionUnit="FullRow" HeadersVisibility="Column"
+                              GridLinesVisibility="None" BorderThickness="0" Background="White" RowHeaderWidth="0"
+                              EnableRowVirtualization="True" EnableColumnVirtualization="True" VirtualizingPanel.IsVirtualizing="True"
+                              VirtualizingPanel.VirtualizationMode="Recycling" ScrollViewer.CanContentScroll="True"
+                              SelectionChanged="Selection_Changed" Sorting="Grid_Sorting" AutomationProperties.AutomationId="ApplicationTable"
+                              AutomationProperties.Name="已安装应用，只读表格">
+                        <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="应用名称" SortMemberPath="Name" Width="220" MinWidth="180">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate>
+                                    <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="38" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                        <Border Width="28" Height="30" Background="#EDF1E9" CornerRadius="6" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Initial}" Foreground="#456A52" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontWeight="Medium" Style="{StaticResource ValueText}" />
+                                            <TextBlock Text="{Binding Subtitle}" Foreground="#738272" FontSize="10" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="关联位置" SortMemberPath="RelatedCount" Width="95" MinWidth="85">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding RelatedSummary}" Foreground="#4B7158" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="版本" SortMemberPath="Version" Width="110" MinWidth="80">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding VersionDisplay}" Style="{StaticResource ValueText}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="安装路径" SortMemberPath="InstallPath" Width="*" MinWidth="140">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding PathDisplay}" Foreground="#617365" Style="{StaticResource ValueText}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="占用空间" SortMemberPath="SizeBytes" Width="115" MinWidth="100">
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBlock Text="{Binding SizeDisplay}" HorizontalAlignment="Right" ToolTip="{Binding SizeSource}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                    <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False">
+                        <TextBlock Text="没有匹配的应用" FontSize="18" Foreground="#405D4C" HorizontalAlignment="Center" />
+                        <TextBlock Text="试试其他名称、版本或路径关键词。" Foreground="#738271" Margin="0,10,0,0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <Border Grid.Column="2" Background="#EDF1E9" CornerRadius="10" Padding="20">
+                <Grid>
+                    <TextBlock x:Name="NoSelection" Text="选中一个应用，查看完整路径与空间信息。" Foreground="#657B68" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="SelectionPanel" Visibility="Collapsed">
+                            <TextBlock Text="应用详情" Foreground="#69806C" FontSize="11" Margin="0,0,0,18" />
+                            <TextBlock Text="{Binding Name}" FontSize="21" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding PublisherDisplay}" Foreground="#617564" TextWrapping="Wrap" Margin="0,7,0,0" />
+                            <TextBlock Text="版本" Style="{StaticResource DetailLabel}" />
+                            <TextBlock Text="{Binding VersionDisplay}" TextWrapping="Wrap" />
+                            <TextBlock Text="来源" Style="{StaticResource DetailLabel}" />
+                            <TextBlock Text="{Binding Source}" />
+                            <TextBlock Text="软件说明" Style="{StaticResource DetailLabel}" />
+                            <TextBlock Text="{Binding Description}" TextWrapping="Wrap" LineHeight="21" />
+                            <TextBlock Text="{Binding DescriptionSource}" TextWrapping="Wrap" FontSize="10" Foreground="#74816E" Margin="0,6,0,0" />
+                            <TextBlock Margin="0,5,0,0" FontSize="10" TextWrapping="Wrap"><Hyperlink NavigateUri="{Binding DescriptionUrl, Mode=OneWay}" RequestNavigate="Source_Navigate"><Run Text="{Binding DescriptionUrl, Mode=OneWay}" /></Hyperlink></TextBlock>
+                            <TextBlock Text="{Binding RecognitionEvidence}" TextWrapping="Wrap" FontSize="10" Foreground="#74816E" Margin="0,10,0,0" />
+                            <TextBlock Text="路径" Style="{StaticResource DetailLabel}" />
+                            <TextBox Text="{Binding PathDisplay, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Padding="0" Background="Transparent"
+                                     AutomationProperties.Name="选中应用的完整路径" />
+                            <TextBlock Text="{Binding PathSource}" Foreground="#74816E" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0" />
+                            <Button Content="复制路径" Click="CopyPath_Click" HorizontalAlignment="Left" Padding="10,5" Margin="0,10,0,0" AutomationProperties.Name="复制选中应用路径" />
+                            <Border BorderBrush="#D4DECE" BorderThickness="0,1,0,0" Margin="0,23,0,0" Padding="0,19,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding SizeDisplay}" FontSize="28" FontWeight="SemiBold" Foreground="#285A41" />
+                                    <TextBlock Text="{Binding SizeSource}" FontSize="11" Foreground="#60765F" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                    <TextBlock Text="{Binding ReportedSizeDisplay, StringFormat=系统报告：{0}}" FontSize="11" Foreground="#60765F" Margin="0,8,0,0" />
+                                    <Button x:Name="MeasureButton" Content="测量目录大小" Margin="0,18,0,0" Click="Measure_Click" AutomationProperties.Name="只读测量选中应用目录的大小" />
+                                    <TextBlock Text="{Binding MeasurementNote}" FontSize="11" Foreground="#60715D" TextWrapping="Wrap" Margin="0,12,0,0" LineHeight="19" />
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Text="其他盘与关联位置" Style="{StaticResource DetailLabel}" />
+                            <TextBlock Text="{Binding AssociationNote}" TextWrapping="Wrap" FontSize="11" Foreground="#60715D" LineHeight="19" />
+                            <ItemsControl ItemsSource="{Binding RelatedLocations}" Margin="0,10,0,0">
+                                <ItemsControl.ItemTemplate><DataTemplate>
+                                    <Border Background="#E2EBDD" CornerRadius="6" Padding="10" Margin="0,0,0,9">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Label}" FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <TextBox Text="{Binding Path, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Padding="0" Margin="0,7,0,0" AutomationProperties.Name="关联候选路径" />
+                                            <TextBlock Text="{Binding Evidence}" TextWrapping="Wrap" Foreground="#60715D" FontSize="10" Margin="0,7,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate></ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+        <Grid Grid.Row="5" Margin="1,15,1,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+            <TextBlock x:Name="StatusText" Text="读取本机安装记录，不修改应用。" Foreground="#697C69" FontSize="11" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+            <TextBlock Grid.Column="1" Text="点击列标题排序 · Esc 清空搜索" Foreground="#74846F" FontSize="11" Margin="16,0,0,0" />
+        </Grid>
+    </Grid>
+</Window>

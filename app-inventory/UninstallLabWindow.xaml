@@ -1,0 +1,54 @@
+<Window x:Class="AppInventory.UninstallLabWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="卸载验证 · 专用测试应用" Width="1080" Height="850" MinWidth="900" MinHeight="720"
+        WindowStartupLocation="CenterOwner" Background="#F4F5F1" Foreground="#23362F"
+        FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="13">
+    <Grid Margin="26">
+        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+        <StackPanel>
+            <TextBlock Text="专用测试应用 · 卸载验证" FontSize="27" FontWeight="SemiBold" />
+            <TextBlock Text="仅操作本工具新建的测试应用。常规软件清单保持只读，测试残留只做隔离与恢复。" Margin="0,9,0,16" Foreground="#60715D" TextWrapping="Wrap" />
+        </StackPanel>
+        <WrapPanel Grid.Row="1" Margin="0,0,0,16">
+            <Button x:Name="CreateButton" Content="创建测试应用" Click="Create_Click" Margin="0,0,12,8" AutomationProperties.Name="创建专用测试应用" />
+            <ComboBox x:Name="ScenarioBox" SelectedIndex="0" Width="175" Padding="8" Margin="0,0,12,8" SelectionChanged="Scenario_Changed" AutomationProperties.Name="选择专用卸载测试场景">
+                <ComboBoxItem Content="正常卸载" Tag="success" /><ComboBoxItem Content="模拟失败（退出码 23）" Tag="fail" />
+                <ComboBoxItem Content="模拟未实际卸载" Tag="noop" /><ComboBoxItem Content="模拟耗时与超时" Tag="slow" />
+            </ComboBox>
+            <Button x:Name="ExecuteButton" Content="执行测试卸载" Click="Execute_Click" Margin="0,0,12,8" IsEnabled="False" AutomationProperties.Name="执行当前专用测试卸载计划" />
+            <Button x:Name="CancelButton" Content="停止测试" Click="Cancel_Click" Margin="0,0,12,8" IsEnabled="False" AutomationProperties.Name="停止本会话专用测试进程" />
+            <Button x:Name="ExportLabButton" Content="导出测试报告…" Click="Export_Click" Margin="0,0,0,8" IsEnabled="False" />
+        </WrapPanel>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="18" /><ColumnDefinition Width="360" /></Grid.ColumnDefinitions>
+            <Border Background="White" CornerRadius="10" Padding="18">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <TextBlock Text="卸载计划" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,10" />
+                        <TextBox x:Name="PlanText" Text="先创建专用测试应用，再核对本会话的目标和命令。" IsReadOnly="True" BorderThickness="0" Background="Transparent" TextWrapping="Wrap" Padding="0" AutomationProperties.Name="专用测试卸载计划" />
+                        <TextBlock Text="残留预览与恢复" FontSize="17" FontWeight="SemiBold" Margin="0,23,0,10" />
+                        <WrapPanel>
+                            <Button x:Name="PreviewButton" Content="预览测试残留" Click="Preview_Click" Margin="0,0,8,8" IsEnabled="False" />
+                            <Button x:Name="IsolateButton" Content="隔离测试残留" Click="Isolate_Click" Margin="0,0,8,8" IsEnabled="False" />
+                            <Button x:Name="RestoreButton" Content="恢复测试残留" Click="Restore_Click" Margin="0,0,0,8" IsEnabled="False" />
+                        </WrapPanel>
+                        <TextBlock x:Name="ResidualText" Text="只有退出码和文件状态均确认成功后，才能预览并隔离测试缓存。" TextWrapping="Wrap" Foreground="#60715D" LineHeight="21" />
+                        <TextBlock Text="恢复已有测试会话" FontWeight="SemiBold" Margin="0,24,0,9" />
+                        <ComboBox x:Name="SessionBox" AutomationProperties.Name="历史专用测试会话" Padding="6" />
+                        <Button x:Name="LoadButton" Content="载入所选测试会话" Click="Load_Click" HorizontalAlignment="Left" Margin="0,9,0,0" />
+                        <TextBlock Text="隔离区和日志保留在本应用的测试目录中。恢复只还原缓存，不会重新安装测试程序。" FontSize="11" Foreground="#74816E" TextWrapping="Wrap" Margin="0,10,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+            <Border Grid.Column="2" Background="#EDF1E9" CornerRadius="10" Padding="18">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <TextBlock Text="执行记录" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,12" />
+                    <TextBox x:Name="EventsText" Grid.Row="1" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" BorderThickness="0" Background="Transparent" AutomationProperties.Name="专用测试执行记录" />
+                </Grid>
+            </Border>
+        </Grid>
+        <TextBlock x:Name="LabStatus" Grid.Row="3" Text="等待创建测试应用。" Margin="0,16,0,0" TextWrapping="Wrap" Foreground="#42664C" />
+    </Grid>
+</Window>
