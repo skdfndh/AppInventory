@@ -104,6 +104,7 @@ internal static class SelfTest
             Progress("开始：专用卸载实验室检查"); UninstallLabChecks.Run(Check);
             Progress("开始：桌面 EXE 正式卸载流程检查"); UninstallWorkflowChecks.Run(window, Check);
             Progress("开始：专用 x86/x64 MSI 检查"); MsiFixtureChecks.Run(Check);
+            Progress("开始：Inno 专用安装器检查"); InnoFixtureChecks.Run(Check);
             Progress("开始：专用 MSIX 检查"); MsixFixtureChecks.Run(Check);
             Progress("开始：注册表只读预览与备份检查"); UninstallWorkflowChecks.RunRegistry(window, Check);
             window.Close();

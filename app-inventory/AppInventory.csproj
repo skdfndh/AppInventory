@@ -5,7 +5,7 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>AppInventory</AssemblyName>
-    <Version>1.1.0-preview.1</Version>
+    <Version>1.1.0-preview.2</Version>
     <Product>应用清单</Product>
     <Description>本地软件清单、受控卸载与可恢复的安装目录残留隔离</Description>
     <StartupObject>AppInventory.App</StartupObject>

@@ -3,6 +3,8 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Windows.Controls;
 using Microsoft.Win32;
+using UninstallTools;
+using UninstallTools.Junk.Confidence;
 
 namespace AppInventory;
 
@@ -19,7 +21,7 @@ internal static class UninstallWorkflowChecks
         internal string Command { get; }
         internal string ConfigParent => @"Software\AppInventoryResidue-" + Token;
         internal string ConfigPath => ConfigParent + "\\" + Row.Name;
-        internal AppRow Row => new() { Name = "应用清单专用注册测试 " + Token[..8], Version = "1.0", InstallPath = DirectoryPath,
+        internal AppRow Row => new() { Name = "应用清单专用注册测试 " + Token[..8] + " Fixture", Version = "1.0", InstallPath = DirectoryPath,
             ExecutablePath = MainPath, UninstallRegistration = new("HKEY_CURRENT_USER\\" + KeyPath, Command, "", "Unknown", false) };
 
         internal Fixture(string scenario)
@@ -111,6 +113,10 @@ internal static class UninstallWorkflowChecks
             "正式配置模块不包含注册表重命名或自动写回实现");
         SelfTest.Progress("开始：云端专用配置创建与权限准备");
         using var fixture = new Fixture("normal");
+        // BCU 会裁掉名称末尾的数字，随机身份不能被误当版本号而降低匹配置信度。
+        var numericName = fixture.Row.Name.Replace(fixture.Token[..8], "12345678", StringComparison.Ordinal);
+        check(ConfidenceGenerators.GenerateConfidence(numericName, new ApplicationUninstallerEntry { DisplayName = numericName })
+            .Any(part => part.Equals(ConfidenceRecords.ProductNamePerfectMatch)), "专用配置身份含纯数字标识时仍保持精确名称证据");
         fixture.CreateConfig();
         var path = "HKEY_CURRENT_USER\\" + fixture.ConfigPath;
         var before = RegistryResiduals.Read(path);
@@ -148,13 +154,22 @@ internal static class UninstallWorkflowChecks
         opened.VerifyRegistryBackup(selected.Id);
         check(RegistryResiduals.Hash(RegistryResiduals.Read(path)) == selected.Hash && opened.RegistryOperations.Single().Status == "已加密备份",
             "配置保存与重载核验只写加密备份文件，原键和值完全不变");
+        var vaultPath = Path.Combine(opened.Root, "registry-" + selected.Id + ".bin");
+        var encryptedVault = File.ReadAllBytes(vaultPath);
+        if (!PortableScanner.IsWithin(opened.Root, Path.Combine(AppContext.BaseDirectory, "read-only-fixtures")))
+            throw new InvalidOperationException("仅允许构造专用测试任务的中断状态。");
+        var pending = opened.State with { Registry = opened.RegistryOperations.Select(item => item with { Status = "候选未选择" }).ToList() };
+        File.WriteAllBytes(Path.Combine(opened.Root, "task.bin"), ProtectedData.Protect(
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(pending, CatalogStorage.JsonOptions), null, DataProtectionScope.CurrentUser));
+        opened = UninstallWorkflow.Open(task.State.Id, true);
+        opened.BackupRegistry(selected.Id, true);
+        check(File.ReadAllBytes(vaultPath).SequenceEqual(encryptedVault) && RegistryResiduals.Hash(RegistryResiduals.Read(path)) == selected.Hash,
+            "备份已落盘而状态保存中断时，重试只核对原备份，不覆盖文件或注册表");
         var report = Path.Combine(fixture.Root, "registry-report.json");
         opened.Export(report);
         var reportText = File.ReadAllText(report);
         check(!reportText.Contains("APPINVENTORY-SYNTHETIC-PRIVATE-") && !reportText.Contains("SyntheticPrivateValue"),
             "明文报告不包含配置值和加密备份内容");
-        var vaultPath = Path.Combine(opened.Root, "registry-" + selected.Id + ".bin");
-        var encryptedVault = File.ReadAllBytes(vaultPath);
         var damagedVault = encryptedVault.ToArray(); damagedVault[^1] ^= 1;
         SelfTest.Progress("开始：仅云端篡改专用备份副本并验证拒绝，不写注册表");
         try

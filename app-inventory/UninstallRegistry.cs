@@ -70,7 +70,8 @@ internal sealed partial class UninstallWorkflow
         if (item.Status != "候选未选择") throw new InvalidOperationException("配置记录已处理，请先核对已有备份。");
         var tree = RegistryResiduals.Read(item.Path);
         if (RegistryResiduals.Hash(tree) != item.Hash) throw new InvalidOperationException("配置内容或权限已改变，请重新预览。");
-        SaveRegistryVault(new(1, State.Id, id, item.Path, item.Hash, tree));
+        // 备份落盘后若状态保存中断，重试只核对已有文件，不覆盖或重复创建。
+        if (!File.Exists(RegistryVaultPath(id))) SaveRegistryVault(new(1, State.Id, id, item.Path, item.Hash, tree));
         ReadRegistryVault(item);
         UpdateRegistry(item with { Status = "已加密备份" });
         Record("配置已备份", "已将所选配置完整保存为当前用户加密备份并核对；原注册表键和值均未修改。");
