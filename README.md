@@ -68,7 +68,7 @@ $package = Get-ChildItem $latest.FullName -Filter '*.zip' -File | Select-Object 
 
 `Prepare-Sandbox.ps1` 保留为配置准备工具；当前版本不开放沙箱内完整自检，也不自动启用系统功能。家庭版和 Docker 限制见[隔离验证说明](docs/uninstall-validation.md)。
 
-Windows CI 在 Windows Server 2022/2025 临时环境执行专用夹具验证并保留逐项进度，暂不自动打包或上传发行包。这些环境不等同于 Windows 10/11 桌面交互验收。
+Windows CI 在 Windows Server 2022/2025 临时环境执行专用夹具验证，再生成并解压自包含包复验；仅保留合成进度及验收摘要，不上传发行包。这些环境不等同于 Windows 10/11 桌面交互验收。
 
 ## 目录
 

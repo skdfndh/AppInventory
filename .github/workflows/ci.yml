@@ -28,12 +28,22 @@ jobs:
         run: .\Initialize-Dependencies.ps1
       - name: 隔离环境专用夹具验收（不含注册表重命名）
         run: .\Verify-Inventory.ps1
+      - name: 生成自包含包（仅临时验收）
+        run: .\Build-Release.ps1
+      - name: 验证解压后的自包含包
+        run: |
+          $latest = Get-ChildItem .\artifacts\release -Directory | Sort-Object Name -Descending | Select-Object -First 1
+          $package = Get-ChildItem $latest.FullName -Filter '*.zip' -File | Select-Object -First 1
+          .\Verify-Release.ps1 -PackagePath $package.FullName
       # 只保存合成检查名称与阶段；不上传真实清单、配置值或未验收发行包。
       - name: 保留检查阶段
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: self-test-progress-${{ matrix.os }}
-          path: logs/inventory-*/self-test.json.progress.jsonl
+          path: |
+            logs/inventory-*/self-test.json.progress.jsonl
+            artifacts/package-check/*/self-test.json.progress.jsonl
+            artifacts/package-check/*/verification.json
           if-no-files-found: warn
           retention-days: 7
