@@ -28,6 +28,7 @@ internal static class MsiFixtureChecks
 
     internal static void Run(Action<bool, string> check)
     {
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") throw new InvalidOperationException("专用 MSI 验证仅允许独立 CI 环境。");
         foreach (var x64 in new[] { false, true }) RunCase((condition, name) => check(condition, name + (x64 ? "（x64）" : "（x86）")), x64, false);
         // 托管 CI 的临时 Windows 虚拟机补充机器级验证，本机默认不申请管理员权限。
         if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")

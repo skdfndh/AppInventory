@@ -18,6 +18,8 @@ foreach ($checkMode in @('--self-test', '--smoke-read')) {
     if ($report.checks) { $report.checks | ForEach-Object { Write-Output ('[OK] ' + $_) } }
     else { Get-Content -LiteralPath $resultPath -Raw }
     if ($testProcess.ExitCode -ne 0) {
+        $progressPath = $resultPath + '.progress.jsonl'
+        if (Test-Path -LiteralPath $progressPath) { Get-Content -LiteralPath $progressPath -Tail 12 }
         Get-Content -LiteralPath $resultPath -Raw
         throw ('Check failed: ' + $checkMode + ', exit=' + $testProcess.ExitCode)
     }

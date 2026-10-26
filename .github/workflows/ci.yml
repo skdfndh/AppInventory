@@ -10,7 +10,11 @@ permissions:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
       run:
@@ -22,6 +26,14 @@ jobs:
           dotnet-version: '8.0.x'
       - name: 还原固定版本 BCU
         run: .\Initialize-Dependencies.ps1
-      # 注册表重命名兼容性核验完成前不自动执行写入测试或提供未验收的下载包。
-      - name: 仅编译（动态验收与打包暂停）
-        run: dotnet build .\app-inventory\AppInventory.csproj -c Release --nologo -v minimal
+      - name: 隔离环境专用夹具验收（不含注册表重命名）
+        run: .\Verify-Inventory.ps1
+      # 只保存合成检查名称与阶段；不上传真实清单、配置值或未验收发行包。
+      - name: 保留检查阶段
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: self-test-progress-${{ matrix.os }}
+          path: logs/inventory-*/self-test.json.progress.jsonl
+          if-no-files-found: warn
+          retention-days: 7

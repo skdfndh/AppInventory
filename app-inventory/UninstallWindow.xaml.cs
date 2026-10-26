@@ -30,7 +30,7 @@ public partial class UninstallWindow : Window
 
     private void UpdateView()
     {
-        if (RunWorkflowButton == null || RestoreRegistryButton == null) return;
+        if (RunWorkflowButton == null || VerifyRegistryBackupButton == null) return;
         var state = _workflow?.State;
         RunWorkflowButton.IsEnabled = !_busy && _prepared && AcceptRisk.IsChecked == true && ConfirmName.Text == state?.Plan.Name;
         StopWaitButton.IsEnabled = _busy && _wait != null;
@@ -45,10 +45,10 @@ public partial class UninstallWindow : Window
         ExportWorkflowButton.IsEnabled = !_busy && state != null && !_workflow.IsRunning;
         var registry = RegistryCandidateBox.SelectedItem as RegistryResidual;
         PreviewRegistryButton.IsEnabled = !_busy && state?.Plan.Package == null && state?.Result.Status == UninstallStatus.Verified && !_workflow.IsRunning;
-        IsolateRegistryButton.IsEnabled = RegistryResiduals.WritesEnabled && !_busy && state?.Result.Status == UninstallStatus.Verified && !_workflow.IsRunning
+        BackupRegistryButton.IsEnabled = !_busy && state?.Result.Status == UninstallStatus.Verified && !_workflow.IsRunning
             && registry?.Status == "候选未选择" && AcceptRegistry.IsChecked == true;
-        RestoreRegistryButton.IsEnabled = RegistryResiduals.WritesEnabled && !_busy && state != null && !_workflow.IsRunning
-            && registry?.Status is "准备配置隔离" or "配置已隔离" or "准备配置恢复";
+        VerifyRegistryBackupButton.IsEnabled = !_busy && state != null && !_workflow.IsRunning
+            && registry?.Status is "已加密备份" or "准备配置隔离" or "配置已隔离" or "准备配置恢复" or "配置已恢复";
         if (state == null) { WorkflowPlanText.Text = "载入历史任务以查看结果或恢复隔离文件。"; return; }
         var plan = state.Plan;
         WorkflowPlanText.Text = plan.Package is { } package
@@ -155,22 +155,22 @@ public partial class UninstallWindow : Window
         finally { _busy = false; _wait.Dispose(); _wait = null; UpdateView(); }
     }
 
-    private async void IsolateRegistry_Click(object sender, RoutedEventArgs e)
+    private async void BackupRegistry_Click(object sender, RoutedEventArgs e)
     {
-        if (!IsolateRegistryButton.IsEnabled || RegistryCandidateBox.SelectedItem is not RegistryResidual item) return;
+        if (!BackupRegistryButton.IsEnabled || RegistryCandidateBox.SelectedItem is not RegistryResidual item) return;
         var accepted = AcceptRegistry.IsChecked == true;
         _busy = true; UpdateView();
-        try { await Task.Run(() => _workflow.IsolateRegistry(item.Id, accepted)); RefreshRegistryList(); _notice = "所选配置键已加密备份并隔离，未永久删除。"; }
-        catch (Exception ex) { _notice = "配置隔离未完成：" + ex.Message; }
+        try { await Task.Run(() => _workflow.BackupRegistry(item.Id, accepted)); RefreshRegistryList(); _notice = "所选配置已加密备份并核对，原注册表没有修改。"; }
+        catch (Exception ex) { _notice = "配置备份未完成：" + ex.Message; }
         finally { _busy = false; UpdateView(); }
     }
 
-    private async void RestoreRegistry_Click(object sender, RoutedEventArgs e)
+    private async void VerifyRegistryBackup_Click(object sender, RoutedEventArgs e)
     {
-        if (!RestoreRegistryButton.IsEnabled || RegistryCandidateBox.SelectedItem is not RegistryResidual item) return;
+        if (!VerifyRegistryBackupButton.IsEnabled || RegistryCandidateBox.SelectedItem is not RegistryResidual item) return;
         _busy = true; UpdateView();
-        try { await Task.Run(() => _workflow.RestoreRegistry(item.Id)); RefreshRegistryList(); _notice = "所选配置已恢复，程序本体没有重新安装。"; }
-        catch (Exception ex) { _notice = "配置恢复未完成：" + ex.Message; }
+        try { await Task.Run(() => _workflow.VerifyRegistryBackup(item.Id)); _notice = "备份解密、任务身份和内容摘要核对通过，没有修改注册表。"; }
+        catch (Exception ex) { _notice = "配置备份核对未通过：" + ex.Message; }
         finally { _busy = false; UpdateView(); }
     }
 }

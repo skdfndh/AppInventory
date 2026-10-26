@@ -24,6 +24,7 @@ internal static class UninstallWorkflowChecks
 
         internal Fixture(string scenario)
         {
+            if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") throw new InvalidOperationException("专用注册测试仅允许独立 CI 环境。");
             Root = Path.Combine(AppContext.BaseDirectory, "read-only-fixtures", "中文 " + Token);
             DirectoryPath = Path.Combine(Root, "AppInventoryFixture-" + Token);
             Command = "\"" + Uninstaller + "\" " + scenario;
@@ -103,8 +104,12 @@ internal static class UninstallWorkflowChecks
         bool Rejected(Action action)
         {
             try { action(); return false; }
-            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or CryptographicException or System.ComponentModel.Win32Exception) { return true; }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or CryptographicException) { return true; }
         }
+        check(!RegistryResiduals.WritesEnabled && typeof(RegistryResiduals).GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .All(method => method.Name is not "RegRenameKey" and not "NtRenameKey" and not "Rename" and not "RestoreBackup"),
+            "正式配置模块不包含注册表重命名或自动写回实现");
+        SelfTest.Progress("开始：云端专用配置创建与权限准备");
         using var fixture = new Fixture("normal");
         fixture.CreateConfig();
         var path = "HKEY_CURRENT_USER\\" + fixture.ConfigPath;
@@ -113,11 +118,12 @@ internal static class UninstallWorkflowChecks
         check(before.Values.Single(value => value.Name == "Expandable").Data == "%TEMP%\\AppInventory" && before.Children.Count == 1,
             "专用注册表备份读取原始环境变量、值类型和嵌套结构，不展开配置值");
         check(Rejected(() => RegistryResiduals.SubKey(@"HKEY_LOCAL_MACHINE\Software\Synthetic"))
-            && Rejected(() => RegistryResiduals.SubKey(@"HKEY_CURRENT_USER\Software\Microsoft\Windows")), "注册表写入范围拒绝机器级与系统配置根");
+            && Rejected(() => RegistryResiduals.SubKey(@"HKEY_CURRENT_USER\Software\Microsoft\Windows")), "注册表范围拒绝机器级与系统配置根");
         var task = UninstallWorkflow.Prepare(fixture.Row, true);
-        check(Rejected(() => task.PreviewRegistry(default)), "卸载尚未核验时不能预览可隔离配置键");
+        check(Rejected(() => task.PreviewRegistry(default)), "卸载尚未核验时不能预览配置键");
         var result = task.ExecuteAsync(task.State.Plan.Name, true, false, default).GetAwaiter().GetResult();
         if (result.Status != UninstallStatus.Verified) throw new InvalidOperationException("配置测试应用未完成卸载。");
+        SelfTest.Progress("开始：BCU 专用配置只读候选定位");
         var candidates = task.PreviewRegistry(default);
         var selected = candidates.SingleOrDefault(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
         check(selected != null && selected.Keys == 2 && selected.Values == 9 && RegistryResiduals.Hash(RegistryResiduals.Read(path)) == originalHash,
@@ -128,61 +134,38 @@ internal static class UninstallWorkflowChecks
         var dialog = new UninstallWindow(owner, task);
         check(((ComboBox)dialog.FindName("RegistryCandidateBox")).SelectedItem == null
             && ((CheckBox)dialog.FindName("AcceptRegistry")).IsChecked != true
-            && !((Button)dialog.FindName("IsolateRegistryButton")).IsEnabled, "配置候选默认不选择、不确认，界面不能直接隔离");
+            && !((Button)dialog.FindName("BackupRegistryButton")).IsEnabled, "配置候选默认不选择、不确认，不能直接备份");
         dialog.Close();
-        check(Rejected(() => task.IsolateRegistry(selected.Id, false)) && RegistryResiduals.Exists(path), "未单独确认配置候选时禁止隔离");
+        check(Rejected(() => task.IsolateRegistry(selected.Id, true)) && Rejected(() => task.RestoreRegistry(selected.Id))
+            && RegistryResiduals.Hash(RegistryResiduals.Read(path)) == originalHash, "隔离与自动恢复在后端一律拒绝，专用夹具也不能绕过");
+        check(Rejected(() => task.BackupRegistry(selected.Id, false)), "未单独确认配置候选时禁止保存备份");
         using (var key = Registry.CurrentUser.OpenSubKey(fixture.ConfigPath, true)) key.SetValue("Changed", "后续合成变更");
-        check(Rejected(() => task.IsolateRegistry(selected.Id, true)), "配置预览后值变化必须重新预览");
+        check(Rejected(() => task.BackupRegistry(selected.Id, true)), "配置预览后值变化必须重新预览");
         selected = task.PreviewRegistry(default).Single(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase) && item.Status == "候选未选择");
-        var hash = selected.Hash;
-        task.IsolateRegistry(selected.Id, true);
-        var quarantine = RegistryResiduals.Quarantine(path, selected.Id);
-        check(!RegistryResiduals.Exists(path) && RegistryResiduals.Exists(quarantine)
-            && RegistryResiduals.Hash(RegistryResiduals.Read(quarantine)) == hash, "选中配置加密备份后在同一父键内原子重命名，数据与权限不变");
-        var report = Path.Combine(fixture.Root, "registry-report.json");
-        task.Export(report);
-        check(!File.ReadAllText(report).Contains("APPINVENTORY-SYNTHETIC-PRIVATE-") && !File.ReadAllText(report).Contains("SyntheticPrivateValue")
-            && task.RegistryOperations.Single().Values == 10,
-            "明文任务报告只含配置路径、计数与摘要，不包含配置值和备份内容");
+        SelfTest.Progress("开始：所选专用配置加密备份，不修改原键");
+        task.BackupRegistry(selected.Id, true);
         var opened = UninstallWorkflow.Open(task.State.Id, true);
+        opened.VerifyRegistryBackup(selected.Id);
+        check(RegistryResiduals.Hash(RegistryResiduals.Read(path)) == selected.Hash && opened.RegistryOperations.Single().Status == "已加密备份",
+            "配置保存与重载核验只写加密备份文件，原键和值完全不变");
+        var report = Path.Combine(fixture.Root, "registry-report.json");
+        opened.Export(report);
+        var reportText = File.ReadAllText(report);
+        check(!reportText.Contains("APPINVENTORY-SYNTHETIC-PRIVATE-") && !reportText.Contains("SyntheticPrivateValue"),
+            "明文报告不包含配置值和加密备份内容");
         var vaultPath = Path.Combine(opened.Root, "registry-" + selected.Id + ".bin");
         var encryptedVault = File.ReadAllBytes(vaultPath);
-        var damagedVault = encryptedVault.ToArray(); damagedVault[^1] ^= 1; File.WriteAllBytes(vaultPath, damagedVault);
-        check(Rejected(() => opened.RestoreRegistry(selected.Id)) && RegistryResiduals.Exists(quarantine) && !RegistryResiduals.Exists(path),
-            "加密配置备份被篡改时拒绝恢复，保留隔离副本");
-        File.WriteAllBytes(vaultPath, encryptedVault);
-        using (var key = Registry.CurrentUser.OpenSubKey(RegistryResiduals.SubKey(quarantine), true)) key.SetValue("IsolationChanged", "合成变化");
-        check(Rejected(() => opened.RestoreRegistry(selected.Id)) && !RegistryResiduals.Exists(path), "隔离配置内容变化后不覆盖恢复");
-        using (var key = Registry.CurrentUser.OpenSubKey(RegistryResiduals.SubKey(quarantine), true)) key.DeleteValue("IsolationChanged");
-        opened.RestoreRegistry(selected.Id);
-        check(RegistryResiduals.Exists(path) && !RegistryResiduals.Exists(quarantine) && RegistryResiduals.Hash(RegistryResiduals.Read(path)) == hash,
-            "重新载入任务后恢复配置键和值类型，保留原始权限");
-        var next = opened.PreviewRegistry(default).Single(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase) && item.Status == "候选未选择");
-        opened.IsolateRegistry(next.Id, true);
-        using (var key = Registry.CurrentUser.CreateSubKey(fixture.ConfigPath, true)) key.SetValue("Conflict", "保留冲突数据");
-        using (var secured = Registry.CurrentUser.OpenSubKey(fixture.ConfigPath, RegistryKeyPermissionCheck.ReadWriteSubTree, System.Security.AccessControl.RegistryRights.FullControl)) RegistryResiduals.SetFixtureOwner(secured);
-        check(Rejected(() => opened.RestoreRegistry(next.Id)), "恢复配置时目标已存在则拒绝覆盖，保留新配置与隔离副本");
-        var conflict = "HKEY_CURRENT_USER\\" + fixture.ConfigParent + "\\conflict-retained";
-        RegistryResiduals.Rename(path, conflict);
-        opened.RestoreRegistry(next.Id);
-        next = opened.PreviewRegistry(default).Single(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase) && item.Status == "候选未选择");
-        opened.IsolateRegistry(next.Id, true);
-        quarantine = RegistryResiduals.Quarantine(path, next.Id);
-        // 仅在本检查刚新建的随机配置父键内模拟隔离副本丢失，验证独立加密备份恢复。
-        RegistryResiduals.Read(quarantine);
-        Registry.CurrentUser.DeleteSubKeyTree(RegistryResiduals.SubKey(quarantine), false);
-        opened.RestoreRegistry(next.Id);
-        check(RegistryResiduals.Hash(RegistryResiduals.Read(path)) == next.Hash && RegistryResiduals.Exists(conflict),
-            "隔离配置副本丢失时仍可从加密备份分阶段恢复，原有冲突数据保持完整");
-        var resumeId = Guid.NewGuid().ToString("N");
-        var temporary = path[..(path.LastIndexOf('\\') + 1)] + ".AppInventory-Restore-" + resumeId;
-        var restoredTree = RegistryResiduals.Read(path);
-        RegistryResiduals.Rename(path, temporary);
-        RegistryResiduals.RestoreBackup(path, resumeId, restoredTree);
-        check(RegistryResiduals.Hash(RegistryResiduals.Read(path)) == next.Hash && !RegistryResiduals.Exists(temporary),
-            "完整暂存配置在恢复中断后可继续原子恢复，不重复覆盖");
+        var damagedVault = encryptedVault.ToArray(); damagedVault[^1] ^= 1;
+        SelfTest.Progress("开始：仅云端篡改专用备份副本并验证拒绝，不写注册表");
+        try
+        {
+            File.WriteAllBytes(vaultPath, damagedVault);
+            check(Rejected(() => opened.VerifyRegistryBackup(selected.Id)) && RegistryResiduals.Hash(RegistryResiduals.Read(path)) == selected.Hash,
+                "加密备份篡改后核验失败，原配置不变");
+        }
+        finally { File.WriteAllBytes(vaultPath, encryptedVault); }
+        opened.VerifyRegistryBackup(selected.Id);
     }
-
     internal static void Run(MainWindow owner, Action<bool, string> check)
     {
         bool Rejected(Action action)
@@ -287,9 +270,10 @@ internal static class UninstallWorkflowChecks
         check(interrupted.State.Result.Status == UninstallStatus.Verified, "模拟重启时序后仍需精确安装身份和独立文件证据才能通过复核");
         var encrypted = Path.Combine(reopened.Root, "task.bin");
         var bytes = File.ReadAllBytes(encrypted);
+        SelfTest.Progress("开始：仅云端篡改任务副本并核验拒绝");
         var changed = bytes.ToArray(); changed[^1] ^= 1; File.WriteAllBytes(encrypted, changed);
-        check(Rejected(() => UninstallWorkflow.Open(reopened.State.Id, true)), "篡改 DPAPI 任务记录无法伪造隔离恢复授权");
-        File.WriteAllBytes(encrypted, bytes);
+        try { check(Rejected(() => UninstallWorkflow.Open(reopened.State.Id, true)), "篡改 DPAPI 任务记录无法伪造隔离恢复授权"); }
+        finally { File.WriteAllBytes(encrypted, bytes); }
         File.Copy(Path.Combine(success.Root, "program.backup"), success.MainPath);
         var staleSuccess = UninstallWorkflow.Open(reopened.State.Id, true); staleSuccess.Recheck();
         check(staleSuccess.State.Result.Status == UninstallStatus.Unconfirmed && Rejected(() => staleSuccess.PreviewResiduals(default)),

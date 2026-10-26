@@ -32,14 +32,14 @@
                     <Button x:Name="RestoreResidualButton" Content="恢复隔离文件" Click="Restore_Click" Margin="0,0,0,10"/>
                 </WrapPanel>
                 <TextBlock Text="当前用户配置键候选" FontSize="18" FontWeight="SemiBold" Margin="0,15,0,8"/>
-                <TextBlock Text="当前版本正在核验注册表兼容性，仅提供候选的只读预览，配置隔离和恢复已禁用。请保留已有备份与隔离配置。" TextWrapping="Wrap"/>
+                <TextBlock Text="只读预览配置候选，可单独选择并保存为本用户加密备份，不修改原注册表。配置隔离和自动恢复已移除；请保留已有备份与隔离配置。" TextWrapping="Wrap"/>
                 <ComboBox x:Name="RegistryCandidateBox" DisplayMemberPath="Label" SelectionChanged="RegistrySelection_Changed" Margin="0,10,0,8" Padding="7" AutomationProperties.Name="选择当前任务的注册表配置候选"/>
                 <TextBox Text="{Binding SelectedItem.Path, ElementName=RegistryCandidateBox, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" AutomationProperties.Name="当前配置候选的完整注册表路径"/>
-                <CheckBox x:Name="AcceptRegistry" Margin="0,10,0,10" Checked="Confirmation_Changed" Unchecked="Confirmation_Changed" AutomationProperties.Name="单独确认所选配置键"><TextBlock Text="我选择此配置键，理解可能包含个人设置；先加密备份，再做可恢复隔离，不永久删除。" TextWrapping="Wrap"/></CheckBox>
+                <CheckBox x:Name="AcceptRegistry" Margin="0,10,0,10" Checked="Confirmation_Changed" Unchecked="Confirmation_Changed" AutomationProperties.Name="确认备份所选配置键"><TextBlock Text="我已核对所选配置，允许将个人设置保存为本机加密备份，不修改原键和值。" TextWrapping="Wrap"/></CheckBox>
                 <WrapPanel>
                     <Button x:Name="PreviewRegistryButton" Content="只读预览配置候选" Click="PreviewRegistry_Click" Margin="0,0,10,10"/>
-                    <Button x:Name="IsolateRegistryButton" Content="备份并隔离所选配置" Click="IsolateRegistry_Click" IsEnabled="False" Margin="0,0,10,10"/>
-                    <Button x:Name="RestoreRegistryButton" Content="恢复所选配置" Click="RestoreRegistry_Click" IsEnabled="False" Margin="0,0,0,10"/>
+                    <Button x:Name="BackupRegistryButton" Content="备份所选配置" Click="BackupRegistry_Click" IsEnabled="False" Margin="0,0,10,10"/>
+                    <Button x:Name="VerifyRegistryBackupButton" Content="核对所选加密备份" Click="VerifyRegistryBackup_Click" IsEnabled="False" Margin="0,0,0,10"/>
                 </WrapPanel>
                 <TextBlock Text="历史任务与隔离恢复" FontWeight="SemiBold" Margin="0,12,0,8"/>
                 <ComboBox x:Name="WorkflowHistory" Padding="8" AutomationProperties.Name="历史卸载任务"/>

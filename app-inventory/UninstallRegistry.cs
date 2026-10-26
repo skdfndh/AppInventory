@@ -31,10 +31,12 @@ internal sealed partial class UninstallWorkflow
         foreach (var item in scanner.FindJunk(target).OfType<RegistryKeyJunk>())
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var leaf = item.FullRegKeyPath[(item.FullRegKeyPath.LastIndexOf('\\') + 1)..];
+            var nameMatches = aliases.Contains(SoftwareDescriptions.Normalize(leaf));
+            if (_fixture && nameMatches) SelfTest.Progress($"专用配置筛选：置信分={item.Confidence.GetRawConfidence()}，路径证据={item.Confidence.Any(part => part.Equals(ConfidenceRecords.ExplicitConnection))}，当前用户={item.FullRegKeyPath.StartsWith("HKEY_CURRENT_USER\\", StringComparison.OrdinalIgnoreCase)}");
             if (item.Confidence.GetRawConfidence() < 5 || !item.Confidence.Any(part => part.Equals(ConfidenceRecords.ExplicitConnection))
                 || !item.FullRegKeyPath.StartsWith("HKEY_CURRENT_USER\\", StringComparison.OrdinalIgnoreCase)) continue;
-            var leaf = item.FullRegKeyPath[(item.FullRegKeyPath.LastIndexOf('\\') + 1)..];
-            if (!aliases.Contains(SoftwareDescriptions.Normalize(leaf))) continue;
+            if (!nameMatches) continue;
             try
             {
                 RegistryResiduals.SubKey(item.FullRegKeyPath);
@@ -42,10 +44,11 @@ internal sealed partial class UninstallWorkflow
                 var counts = RegistryResiduals.Count(tree);
                 candidates.Add(new(Guid.NewGuid().ToString("N"), item.FullRegKeyPath, RegistryResiduals.Hash(tree), counts.Keys, counts.Values, "候选未选择"));
             }
-            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            { if (_fixture) SelfTest.Progress("专用配置被读取保护阻止：" + ex.GetType().Name + (ex is InvalidOperationException ? " · " + ex.Message : "")); }
         }
         var previous = RegistryOperations.Where(item => item.Status != "候选未选择").ToList();
-        var paths = previous.Where(item => item.Status is "准备配置隔离" or "配置已隔离" or "准备配置恢复")
+        var paths = previous.Where(item => item.Status is "准备配置隔离" or "配置已隔离" or "准备配置恢复" or "已加密备份")
             .Select(item => item.Path).ToHashSet(StringComparer.OrdinalIgnoreCase);
         previous.AddRange(candidates.Where(item => !paths.Contains(item.Path)).DistinctBy(item => item.Path, StringComparer.OrdinalIgnoreCase));
         _state = _state with { Registry = previous };
@@ -53,44 +56,31 @@ internal sealed partial class UninstallWorkflow
         return RegistryOperations;
     }
 
-    internal void IsolateRegistry(string id, bool acknowledged)
+    internal void IsolateRegistry(string id, bool acknowledged) => throw new InvalidOperationException("注册表隔离已移除，当前版本仅提供只读预览与加密备份。");
+
+    internal void RestoreRegistry(string id) => throw new InvalidOperationException("注册表自动恢复已移除，请保留已有备份与隔离配置。");
+
+    internal void BackupRegistry(string id, bool acknowledged)
     {
-        if (!RegistryResiduals.WritesEnabled && !_fixture) throw new InvalidOperationException("注册表写入正在进行兼容性核验，当前版本仅提供只读预览。");
         using var execution = AcquireGlobal();
         using var lease = AcquireTask();
         RequireDesktopResiduals(); RequireVerified();
-        if (!acknowledged) throw new InvalidOperationException("必须单独确认所选配置键可能包含个人设置。");
+        if (!acknowledged) throw new InvalidOperationException("必须单独确认将所选配置保存为本机加密备份。");
         var item = RegistryOperations.SingleOrDefault(item => item.Id == id) ?? throw new InvalidOperationException("没有本任务的配置候选。");
-        if (item.Status != "候选未选择") throw new InvalidOperationException("该配置键已进入隔离流程。");
+        if (item.Status != "候选未选择") throw new InvalidOperationException("配置记录已处理，请先核对已有备份。");
         var tree = RegistryResiduals.Read(item.Path);
         if (RegistryResiduals.Hash(tree) != item.Hash) throw new InvalidOperationException("配置内容或权限已改变，请重新预览。");
-        var destination = RegistryResiduals.Quarantine(item.Path, id);
-        if (RegistryResiduals.Exists(destination)) throw new InvalidOperationException("配置隔离目标已存在，拒绝覆盖。");
         SaveRegistryVault(new(1, State.Id, id, item.Path, item.Hash, tree));
-        UpdateRegistry(item with { Status = "准备配置隔离" }); Save();
-        RegistryResiduals.Rename(item.Path, destination);
-        UpdateRegistry(item with { Status = "配置已隔离" }); Record("配置已隔离", "已备份并重命名一个当前用户配置键；未永久删除，备份值不进入明文报告。");
+        ReadRegistryVault(item);
+        UpdateRegistry(item with { Status = "已加密备份" });
+        Record("配置已备份", "已将所选配置完整保存为当前用户加密备份并核对；原注册表键和值均未修改。");
     }
 
-    internal void RestoreRegistry(string id)
+    internal void VerifyRegistryBackup(string id)
     {
-        if (!RegistryResiduals.WritesEnabled && !_fixture) throw new InvalidOperationException("注册表写入正在进行兼容性核验，请保留现有备份与隔离配置，暂不执行恢复。");
-        using var execution = AcquireGlobal();
         using var lease = AcquireTask();
-        RequireDesktopResiduals();
-        var item = RegistryOperations.SingleOrDefault(item => item.Id == id) ?? throw new InvalidOperationException("没有对应配置记录。");
-        if (item.Status is not "准备配置隔离" and not "配置已隔离" and not "准备配置恢复") throw new InvalidOperationException("没有可恢复的配置隔离。");
-        if (RegistryResiduals.Exists(item.Path)) throw new InvalidOperationException("原配置键已存在，保留两侧数据，不覆盖。");
-        var vault = ReadRegistryVault(item);
-        var source = RegistryResiduals.Quarantine(item.Path, id);
-        var exists = RegistryResiduals.Exists(source);
-        if (exists && RegistryResiduals.Hash(RegistryResiduals.Read(source)) != item.Hash)
-            throw new InvalidOperationException("隔离配置已变化，保留当前数据与备份，拒绝覆盖恢复。");
-        UpdateRegistry(item with { Status = "准备配置恢复" }); Save();
-        if (exists) RegistryResiduals.Rename(source, item.Path);
-        else RegistryResiduals.RestoreBackup(item.Path, id, vault.Tree);
-        if (RegistryResiduals.Hash(RegistryResiduals.Read(item.Path)) != item.Hash) throw new InvalidOperationException("配置恢复后核验不一致，请保留备份检查。");
-        UpdateRegistry(item with { Status = "配置已恢复" }); Record("配置已恢复", "已恢复配置值类型与权限，不重新安装程序；原有目标存在时不覆盖。");
+        var item = RegistryOperations.SingleOrDefault(item => item.Id == id) ?? throw new InvalidOperationException("没有本任务的配置记录。");
+        ReadRegistryVault(item);
     }
 
     private void UpdateRegistry(RegistryResidual changed) => _state = _state with
