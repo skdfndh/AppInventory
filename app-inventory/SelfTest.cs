@@ -86,6 +86,7 @@ internal static class SelfTest
             UninstallWorkflowChecks.Run(window, Check);
             MsiFixtureChecks.Run(Check);
             MsixFixtureChecks.Run(Check);
+            UninstallWorkflowChecks.RunRegistry(window, Check);
             window.Close();
             application.Shutdown();
             Write(resultPath, new { passed = checks.Count, checks });

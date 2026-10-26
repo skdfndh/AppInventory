@@ -18,7 +18,7 @@ public partial class UninstallWindow : Window
         if (owner.IsVisible) Owner = owner;
         Resources = owner.Resources;
         _workflow = workflow; _prepared = workflow != null;
-        RefreshHistory(); UpdateView();
+        RefreshHistory(); RefreshRegistryList(); UpdateView();
         Closed += (_, _) => _wait?.Cancel();
     }
 
@@ -30,7 +30,7 @@ public partial class UninstallWindow : Window
 
     private void UpdateView()
     {
-        if (RunWorkflowButton == null) return;
+        if (RunWorkflowButton == null || RestoreRegistryButton == null) return;
         var state = _workflow?.State;
         RunWorkflowButton.IsEnabled = !_busy && _prepared && AcceptRisk.IsChecked == true && ConfirmName.Text == state?.Plan.Name;
         StopWaitButton.IsEnabled = _busy && _wait != null;
@@ -43,6 +43,12 @@ public partial class UninstallWindow : Window
         IsolateResidualButton.IsEnabled = !_busy && _previewed && AcceptResidual.IsChecked == true && !_workflow.IsRunning;
         RestoreResidualButton.IsEnabled = !_busy && state?.Isolation is "准备隔离" or "已隔离" or "准备恢复";
         ExportWorkflowButton.IsEnabled = !_busy && state != null && !_workflow.IsRunning;
+        var registry = RegistryCandidateBox.SelectedItem as RegistryResidual;
+        PreviewRegistryButton.IsEnabled = !_busy && state?.Plan.Package == null && state?.Result.Status == UninstallStatus.Verified && !_workflow.IsRunning;
+        IsolateRegistryButton.IsEnabled = !_busy && state?.Result.Status == UninstallStatus.Verified && !_workflow.IsRunning
+            && registry?.Status == "候选未选择" && AcceptRegistry.IsChecked == true;
+        RestoreRegistryButton.IsEnabled = !_busy && state != null && !_workflow.IsRunning
+            && registry?.Status is "准备配置隔离" or "配置已隔离" or "准备配置恢复";
         if (state == null) { WorkflowPlanText.Text = "载入历史任务以查看结果或恢复隔离文件。"; return; }
         var plan = state.Plan;
         WorkflowPlanText.Text = plan.Package is { } package
@@ -71,7 +77,7 @@ public partial class UninstallWindow : Window
     {
         if (_workflow == null) return;
         _busy = true; UpdateView();
-        try { _workflow = await Task.Run(() => { var task = UninstallWorkflow.Open(_workflow.State.Id); if (!task.IsRunning) task.Recheck(); return task; }); _prepared = false; _notice = ""; }
+        try { _workflow = await Task.Run(() => { var task = UninstallWorkflow.Open(_workflow.State.Id); if (!task.IsRunning) task.Recheck(); return task; }); _prepared = false; _notice = ""; RefreshRegistryList(); }
         catch (Exception ex) { _notice = "状态无法读取：" + ex.Message; }
         finally { _busy = false; UpdateView(); }
     }
@@ -112,7 +118,7 @@ public partial class UninstallWindow : Window
     {
         if (WorkflowHistory.SelectedItem is not string id) return;
         _busy = true; UpdateView();
-        try { _workflow = await Task.Run(() => { var task = UninstallWorkflow.Open(id); if (!task.IsRunning) task.Recheck(); return task; }); _prepared = false; _previewed = false; _notice = ""; AcceptRisk.IsChecked = AcceptResidual.IsChecked = false; ConfirmName.Clear(); ResidualFilesText.Clear(); }
+        try { _workflow = await Task.Run(() => { var task = UninstallWorkflow.Open(id); if (!task.IsRunning) task.Recheck(); return task; }); _prepared = false; _previewed = false; _notice = ""; AcceptRisk.IsChecked = AcceptResidual.IsChecked = false; ConfirmName.Clear(); ResidualFilesText.Clear(); RefreshRegistryList(); }
         catch (Exception ex) { _notice = "载入失败：" + ex.Message; }
         finally { _busy = false; UpdateView(); }
     }
@@ -126,4 +132,45 @@ public partial class UninstallWindow : Window
     }
 
     private void Lab_Click(object sender, RoutedEventArgs e) { if (!_busy) new UninstallLabWindow(this).ShowDialog(); }
+
+    private void RefreshRegistryList()
+    {
+        var id = (RegistryCandidateBox.SelectedItem as RegistryResidual)?.Id;
+        var items = _workflow?.RegistryOperations.ToList() ?? new();
+        RegistryCandidateBox.ItemsSource = items;
+        RegistryCandidateBox.SelectedItem = items.FirstOrDefault(item => item.Id == id);
+        AcceptRegistry.IsChecked = false;
+    }
+
+    private void RegistrySelection_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (AcceptRegistry != null) { AcceptRegistry.IsChecked = false; UpdateView(); }
+    }
+
+    private async void PreviewRegistry_Click(object sender, RoutedEventArgs e)
+    {
+        _busy = true; _wait = new(); UpdateView();
+        try { await Task.Run(() => _workflow.PreviewRegistry(_wait.Token)); RefreshRegistryList(); _notice = "候选不等于可删除；未找到符合条件的键也不表示没有全部残留。"; }
+        catch (Exception ex) { _notice = "配置预览被阻止：" + ex.Message; }
+        finally { _busy = false; _wait.Dispose(); _wait = null; UpdateView(); }
+    }
+
+    private async void IsolateRegistry_Click(object sender, RoutedEventArgs e)
+    {
+        if (!IsolateRegistryButton.IsEnabled || RegistryCandidateBox.SelectedItem is not RegistryResidual item) return;
+        var accepted = AcceptRegistry.IsChecked == true;
+        _busy = true; UpdateView();
+        try { await Task.Run(() => _workflow.IsolateRegistry(item.Id, accepted)); RefreshRegistryList(); _notice = "所选配置键已加密备份并隔离，未永久删除。"; }
+        catch (Exception ex) { _notice = "配置隔离未完成：" + ex.Message; }
+        finally { _busy = false; UpdateView(); }
+    }
+
+    private async void RestoreRegistry_Click(object sender, RoutedEventArgs e)
+    {
+        if (!RestoreRegistryButton.IsEnabled || RegistryCandidateBox.SelectedItem is not RegistryResidual item) return;
+        _busy = true; UpdateView();
+        try { await Task.Run(() => _workflow.RestoreRegistry(item.Id)); RefreshRegistryList(); _notice = "所选配置已恢复，程序本体没有重新安装。"; }
+        catch (Exception ex) { _notice = "配置恢复未完成：" + ex.Message; }
+        finally { _busy = false; UpdateView(); }
+    }
 }

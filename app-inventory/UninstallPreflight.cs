@@ -38,7 +38,10 @@ internal static class UninstallPreflight
         if (row.IsPortableCandidate)
             return Empty("便携 / 未注册候选：没有可靠卸载记录，不能自动删除程序目录。", "便携候选");
         if (row.Source == "商店 / MSIX 应用")
-            return Empty("商店应用需要独立的包管理卸载流程，当前未启用。", "商店 / MSIX");
+            return string.IsNullOrWhiteSpace(row.PackageFullName)
+                ? Empty("没有本次系统读取的完整包身份，请刷新清单。", "商店 / MSIX")
+                : new("完整包身份已读取；打开卸载计划后核对当前用户与依赖。", "商店 / MSIX", "仅当前 Windows 用户",
+                    "Windows 包管理接口", "RemovePackageAsync · " + row.PackageFullName, "未提供");
         var entry = row.UninstallRegistration;
         if (entry == null) return Empty("尚无本次读取的卸载信息；历史快照不能用于执行，请刷新清单。", "未核实");
         var scope = entry.RegistryPath.StartsWith("HKEY_LOCAL_MACHINE\\", StringComparison.OrdinalIgnoreCase)

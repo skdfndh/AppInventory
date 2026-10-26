@@ -59,5 +59,9 @@ internal static class UninstallPreflightChecks
         check(forged.UninstallRegistration == null, "导入 JSON 无法注入卸载入口");
         var forgedPackage = JsonSerializer.Deserialize<AppRow>("{\"Name\":\"合成商店快照\",\"Source\":\"商店 / MSIX 应用\",\"PackageFullName\":\"forged-package\"}", CatalogStorage.JsonOptions);
         check(forgedPackage.PackageFullName.Length == 0, "历史 JSON 不能注入商店应用的完整卸载身份");
+        var livePackage = new AppRow { Name = "合成包界面记录", Source = "商店 / MSIX 应用", PackageFullName = "AiFixture.Synthetic_1.0.0.0_x64__synthetic" };
+        window.SetApps(new() { livePackage });
+        check(((Button)window.FindName("UninstallButton")).IsEnabled && livePackage.UninstallPreview.Command.Contains(livePackage.PackageFullName),
+            "本次读取完整身份的商店记录可进入独立计划，界面测试不执行卸载");
     }
 }

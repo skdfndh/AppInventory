@@ -17,6 +17,8 @@ internal static class UninstallWorkflowChecks
         internal string Uninstaller => Path.Combine(DirectoryPath, "RegisteredUninstaller.exe");
         internal string KeyPath => InstallIdentity.Root + "AppInventoryFixture-" + Token;
         internal string Command { get; }
+        internal string ConfigParent => @"Software\AppInventoryResidue-" + Token;
+        internal string ConfigPath => ConfigParent + "\\" + Row.Name;
         internal AppRow Row => new() { Name = "应用清单专用注册测试 " + Token[..8], Version = "1.0", InstallPath = DirectoryPath,
             ExecutablePath = MainPath, UninstallRegistration = new("HKEY_CURRENT_USER\\" + KeyPath, Command, "", "Unknown", false) };
 
@@ -50,9 +52,42 @@ internal static class UninstallWorkflowChecks
             key.SetValue(name, value);
         }
 
+        internal void CreateConfig()
+        {
+            using var root = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+            using (var previous = root.OpenSubKey(ConfigParent, false)) if (previous != null) throw new IOException("专用配置父键已存在。");
+            using (var parent = root.CreateSubKey(ConfigParent, true)) parent.SetValue("FixtureToken", Token);
+            using (var key = root.CreateSubKey(ConfigPath, true))
+            {
+                key.SetValue("InstallDir", DirectoryPath);
+                key.SetValue("SyntheticPrivateValue", "APPINVENTORY-SYNTHETIC-PRIVATE-" + Token);
+                key.SetValue("Expandable", "%TEMP%\\AppInventory", RegistryValueKind.ExpandString);
+                key.SetValue("Multi", new[] { "第一项", "second" }, RegistryValueKind.MultiString);
+                key.SetValue("Binary", new byte[] { 0, 1, 254 }, RegistryValueKind.Binary);
+                key.SetValue("None", new byte[] { 9, 0 }, RegistryValueKind.None);
+                key.SetValue("Dword", -1, RegistryValueKind.DWord);
+                key.SetValue("Qword", long.MaxValue, RegistryValueKind.QWord);
+            }
+            using (var child = root.CreateSubKey(ConfigPath + "\\Nested", true)) child.SetValue("Value", "嵌套合成值");
+            foreach (var path in new[] { ConfigParent, ConfigPath, ConfigPath + "\\Nested" })
+            {
+                using var secured = root.OpenSubKey(path, RegistryKeyPermissionCheck.ReadWriteSubTree, System.Security.AccessControl.RegistryRights.FullControl);
+                RegistryResiduals.SetFixtureOwner(secured);
+            }
+        }
+
         public void Dispose()
         {
             using var hive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+            using (var config = hive.OpenSubKey(ConfigParent, false))
+            {
+                if (config != null)
+                {
+                    if ((string)config.GetValue("FixtureToken") != Token) throw new InvalidOperationException("配置夹具标识改变，不清理。");
+                    RegistryResiduals.Read("HKEY_CURRENT_USER\\" + ConfigParent);
+                    hive.DeleteSubKeyTree(ConfigParent, false);
+                }
+            }
             using (var key = hive.OpenSubKey(KeyPath, false))
             {
                 if (key == null) return;
@@ -61,6 +96,91 @@ internal static class UninstallWorkflowChecks
             }
             hive.DeleteSubKey(KeyPath, false);
         }
+    }
+
+    internal static void RunRegistry(MainWindow owner, Action<bool, string> check)
+    {
+        bool Rejected(Action action)
+        {
+            try { action(); return false; }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or CryptographicException or System.ComponentModel.Win32Exception) { return true; }
+        }
+        using var fixture = new Fixture("normal");
+        fixture.CreateConfig();
+        var path = "HKEY_CURRENT_USER\\" + fixture.ConfigPath;
+        var before = RegistryResiduals.Read(path);
+        var originalHash = RegistryResiduals.Hash(before);
+        check(before.Values.Single(value => value.Name == "Expandable").Data == "%TEMP%\\AppInventory" && before.Children.Count == 1,
+            "专用注册表备份读取原始环境变量、值类型和嵌套结构，不展开配置值");
+        check(Rejected(() => RegistryResiduals.SubKey(@"HKEY_LOCAL_MACHINE\Software\Synthetic"))
+            && Rejected(() => RegistryResiduals.SubKey(@"HKEY_CURRENT_USER\Software\Microsoft\Windows")), "注册表写入范围拒绝机器级与系统配置根");
+        var task = UninstallWorkflow.Prepare(fixture.Row, true);
+        check(Rejected(() => task.PreviewRegistry(default)), "卸载尚未核验时不能预览可隔离配置键");
+        var result = task.ExecuteAsync(task.State.Plan.Name, true, false, default).GetAwaiter().GetResult();
+        if (result.Status != UninstallStatus.Verified) throw new InvalidOperationException("配置测试应用未完成卸载。");
+        var candidates = task.PreviewRegistry(default);
+        var selected = candidates.SingleOrDefault(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+        check(selected != null && selected.Keys == 2 && selected.Values == 9 && RegistryResiduals.Hash(RegistryResiduals.Read(path)) == originalHash,
+            "BCU 名称及路径证据定位专用配置键，预览没有修改任何值");
+        var cancelled = false;
+        try { task.PreviewRegistry(new CancellationToken(true)); } catch (OperationCanceledException) { cancelled = true; }
+        check(cancelled && RegistryResiduals.Hash(RegistryResiduals.Read(path)) == originalHash, "取消配置预览不会修改原配置");
+        var dialog = new UninstallWindow(owner, task);
+        check(((ComboBox)dialog.FindName("RegistryCandidateBox")).SelectedItem == null
+            && ((CheckBox)dialog.FindName("AcceptRegistry")).IsChecked != true
+            && !((Button)dialog.FindName("IsolateRegistryButton")).IsEnabled, "配置候选默认不选择、不确认，界面不能直接隔离");
+        dialog.Close();
+        check(Rejected(() => task.IsolateRegistry(selected.Id, false)) && RegistryResiduals.Exists(path), "未单独确认配置候选时禁止隔离");
+        using (var key = Registry.CurrentUser.OpenSubKey(fixture.ConfigPath, true)) key.SetValue("Changed", "后续合成变更");
+        check(Rejected(() => task.IsolateRegistry(selected.Id, true)), "配置预览后值变化必须重新预览");
+        selected = task.PreviewRegistry(default).Single(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase) && item.Status == "候选未选择");
+        var hash = selected.Hash;
+        task.IsolateRegistry(selected.Id, true);
+        var quarantine = RegistryResiduals.Quarantine(path, selected.Id);
+        check(!RegistryResiduals.Exists(path) && RegistryResiduals.Exists(quarantine)
+            && RegistryResiduals.Hash(RegistryResiduals.Read(quarantine)) == hash, "选中配置加密备份后在同一父键内原子重命名，数据与权限不变");
+        var report = Path.Combine(fixture.Root, "registry-report.json");
+        task.Export(report);
+        check(!File.ReadAllText(report).Contains("APPINVENTORY-SYNTHETIC-PRIVATE-") && !File.ReadAllText(report).Contains("SyntheticPrivateValue")
+            && task.RegistryOperations.Single().Values == 10,
+            "明文任务报告只含配置路径、计数与摘要，不包含配置值和备份内容");
+        var opened = UninstallWorkflow.Open(task.State.Id, true);
+        var vaultPath = Path.Combine(opened.Root, "registry-" + selected.Id + ".bin");
+        var encryptedVault = File.ReadAllBytes(vaultPath);
+        var damagedVault = encryptedVault.ToArray(); damagedVault[^1] ^= 1; File.WriteAllBytes(vaultPath, damagedVault);
+        check(Rejected(() => opened.RestoreRegistry(selected.Id)) && RegistryResiduals.Exists(quarantine) && !RegistryResiduals.Exists(path),
+            "加密配置备份被篡改时拒绝恢复，保留隔离副本");
+        File.WriteAllBytes(vaultPath, encryptedVault);
+        using (var key = Registry.CurrentUser.OpenSubKey(RegistryResiduals.SubKey(quarantine), true)) key.SetValue("IsolationChanged", "合成变化");
+        check(Rejected(() => opened.RestoreRegistry(selected.Id)) && !RegistryResiduals.Exists(path), "隔离配置内容变化后不覆盖恢复");
+        using (var key = Registry.CurrentUser.OpenSubKey(RegistryResiduals.SubKey(quarantine), true)) key.DeleteValue("IsolationChanged");
+        opened.RestoreRegistry(selected.Id);
+        check(RegistryResiduals.Exists(path) && !RegistryResiduals.Exists(quarantine) && RegistryResiduals.Hash(RegistryResiduals.Read(path)) == hash,
+            "重新载入任务后恢复配置键和值类型，保留原始权限");
+        var next = opened.PreviewRegistry(default).Single(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase) && item.Status == "候选未选择");
+        opened.IsolateRegistry(next.Id, true);
+        using (var key = Registry.CurrentUser.CreateSubKey(fixture.ConfigPath, true)) key.SetValue("Conflict", "保留冲突数据");
+        using (var secured = Registry.CurrentUser.OpenSubKey(fixture.ConfigPath, RegistryKeyPermissionCheck.ReadWriteSubTree, System.Security.AccessControl.RegistryRights.FullControl)) RegistryResiduals.SetFixtureOwner(secured);
+        check(Rejected(() => opened.RestoreRegistry(next.Id)), "恢复配置时目标已存在则拒绝覆盖，保留新配置与隔离副本");
+        var conflict = "HKEY_CURRENT_USER\\" + fixture.ConfigParent + "\\conflict-retained";
+        RegistryResiduals.Rename(path, conflict);
+        opened.RestoreRegistry(next.Id);
+        next = opened.PreviewRegistry(default).Single(item => item.Path.Equals(path, StringComparison.OrdinalIgnoreCase) && item.Status == "候选未选择");
+        opened.IsolateRegistry(next.Id, true);
+        quarantine = RegistryResiduals.Quarantine(path, next.Id);
+        // 仅在本检查刚新建的随机配置父键内模拟隔离副本丢失，验证独立加密备份恢复。
+        RegistryResiduals.Read(quarantine);
+        Registry.CurrentUser.DeleteSubKeyTree(RegistryResiduals.SubKey(quarantine), false);
+        opened.RestoreRegistry(next.Id);
+        check(RegistryResiduals.Hash(RegistryResiduals.Read(path)) == next.Hash && RegistryResiduals.Exists(conflict),
+            "隔离配置副本丢失时仍可从加密备份分阶段恢复，原有冲突数据保持完整");
+        var resumeId = Guid.NewGuid().ToString("N");
+        var temporary = path[..(path.LastIndexOf('\\') + 1)] + ".AppInventory-Restore-" + resumeId;
+        var restoredTree = RegistryResiduals.Read(path);
+        RegistryResiduals.Rename(path, temporary);
+        RegistryResiduals.RestoreBackup(path, resumeId, restoredTree);
+        check(RegistryResiduals.Hash(RegistryResiduals.Read(path)) == next.Hash && !RegistryResiduals.Exists(temporary),
+            "完整暂存配置在恢复中断后可继续原子恢复，不重复覆盖");
     }
 
     internal static void Run(MainWindow owner, Action<bool, string> check)

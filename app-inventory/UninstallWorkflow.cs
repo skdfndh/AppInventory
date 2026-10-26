@@ -26,12 +26,15 @@ internal sealed record WorkflowResult(UninstallStatus Status, int? ExitCode, str
 }
 internal sealed record ResidualFile(string RelativePath, long Bytes, string Hash);
 internal sealed record WorkflowState(int Schema, string Id, WorkflowPlan Plan, DateTimeOffset CreatedAt, DateTimeOffset? StartedAt,
-    int? ProcessId, long? ProcessStartTicks, WorkflowResult Result, List<LabEvent> Events, List<ResidualFile> Residuals, string Isolation);
+    int? ProcessId, long? ProcessStartTicks, WorkflowResult Result, List<LabEvent> Events, List<ResidualFile> Residuals, string Isolation,
+    List<RegistryResidual> Registry = null);
 
-internal sealed class UninstallWorkflow
+internal sealed partial class UninstallWorkflow
 {
     internal static string TaskRoot => Path.Combine(CatalogStorage.DataDirectory, "uninstall-tasks");
-    private static string StorageRoot(bool fixture) => fixture ? Path.Combine(AppContext.BaseDirectory, "read-only-fixtures", "uninstall-tasks") : TaskRoot;
+    // 每轮合成测试独立存储，避免中断的篡改测试阻塞之后的检查；正式任务继续共享执行锁。
+    private static readonly string FixtureRunId = Guid.NewGuid().ToString("N");
+    private static string StorageRoot(bool fixture) => fixture ? Path.Combine(AppContext.BaseDirectory, "read-only-fixtures", "uninstall-tasks", FixtureRunId) : TaskRoot;
     private readonly bool _fixture;
     private readonly object _gate = new();
     private WorkflowState _state;
@@ -49,7 +52,6 @@ internal sealed class UninstallWorkflow
     {
         if (row.Source == "商店 / MSIX 应用" && !row.IsPortableCandidate)
         {
-            if (!PackageUninstall.Enabled && !fixture) throw new InvalidOperationException("商店卸载仍在隔离验收，当前入口未开放。");
             return Create(PackageUninstall.Prepare(row), fixture);
         }
         if (row.IsPortableCandidate || row.Source != "桌面应用" || row.UninstallRegistration == null)
@@ -374,6 +376,7 @@ internal sealed class UninstallWorkflow
 
     private void RecheckCore()
     {
+        RecheckRegistryCore();
         var status = State.Result.Status;
         if (status == UninstallStatus.Running && !ProcessMatches(State))
             _state = _state with { Result = new(UninstallStatus.Unconfirmed, null, "原进程已结束，但没有已保存的退出结果，禁止清理。") };

@@ -6,7 +6,7 @@
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel Margin="0,0,0,16">
             <TextBlock Text="应用卸载与恢复" FontSize="26" FontWeight="SemiBold"/>
-            <TextBlock Text="核对本次计划后才执行。厂商卸载操作无法由本工具撤销；隔离恢复仅还原残留文件。" TextWrapping="Wrap" Margin="0,8,0,0"/>
+            <TextBlock Text="核对本次计划后才执行。系统或厂商卸载操作无法由本工具撤销；隔离恢复仅还原残留文件。" TextWrapping="Wrap" Margin="0,8,0,0"/>
         </StackPanel>
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
             <StackPanel>
@@ -30,6 +30,16 @@
                     <Button x:Name="PreviewResidualButton" Content="只读预览残留" Click="Preview_Click" Margin="0,0,10,10"/>
                     <Button x:Name="IsolateResidualButton" Content="隔离所选目录残留" Click="Isolate_Click" IsEnabled="False" Margin="0,0,10,10"/>
                     <Button x:Name="RestoreResidualButton" Content="恢复隔离文件" Click="Restore_Click" Margin="0,0,0,10"/>
+                </WrapPanel>
+                <TextBlock Text="当前用户配置键候选" FontSize="18" FontWeight="SemiBold" Margin="0,15,0,8"/>
+                <TextBlock Text="仅接受名称、安装路径、实际位置与当前用户所有权均符合条件的配置键。可能含个人设置，默认不选择；系统及机器级键不写入。备份加密保存在本机，不进入明文报告。" TextWrapping="Wrap"/>
+                <ComboBox x:Name="RegistryCandidateBox" DisplayMemberPath="Label" SelectionChanged="RegistrySelection_Changed" Margin="0,10,0,8" Padding="7" AutomationProperties.Name="选择当前任务的注册表配置候选"/>
+                <TextBox Text="{Binding SelectedItem.Path, ElementName=RegistryCandidateBox, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" AutomationProperties.Name="当前配置候选的完整注册表路径"/>
+                <CheckBox x:Name="AcceptRegistry" Margin="0,10,0,10" Checked="Confirmation_Changed" Unchecked="Confirmation_Changed" AutomationProperties.Name="单独确认所选配置键"><TextBlock Text="我选择此配置键，理解可能包含个人设置；先加密备份，再做可恢复隔离，不永久删除。" TextWrapping="Wrap"/></CheckBox>
+                <WrapPanel>
+                    <Button x:Name="PreviewRegistryButton" Content="只读预览配置候选" Click="PreviewRegistry_Click" Margin="0,0,10,10"/>
+                    <Button x:Name="IsolateRegistryButton" Content="备份并隔离所选配置" Click="IsolateRegistry_Click" IsEnabled="False" Margin="0,0,10,10"/>
+                    <Button x:Name="RestoreRegistryButton" Content="恢复所选配置" Click="RestoreRegistry_Click" IsEnabled="False" Margin="0,0,0,10"/>
                 </WrapPanel>
                 <TextBlock Text="历史任务与隔离恢复" FontWeight="SemiBold" Margin="0,12,0,8"/>
                 <ComboBox x:Name="WorkflowHistory" Padding="8" AutomationProperties.Name="历史卸载任务"/>

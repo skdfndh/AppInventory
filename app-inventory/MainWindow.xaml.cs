@@ -247,7 +247,8 @@ public partial class MainWindow : Window
         if (MeasureButton == null) return;
         if (UninstallButton != null) UninstallButton.IsEnabled = !_loading && !_exporting && !_uninstallPlanning && _directoryScan == null
             && _measurement == null && AppsGrid.SelectedItem is AppRow selected && !selected.IsPortableCandidate
-            && selected.Source == "桌面应用" && selected.UninstallRegistration != null;
+            && (selected.Source == "桌面应用" && selected.UninstallRegistration != null
+                || selected.Source == "商店 / MSIX 应用" && !string.IsNullOrWhiteSpace(selected.PackageFullName));
         RefreshButton.IsEnabled = !_loading && _directoryScan == null && _measurement == null && !_exporting;
         ScanButton.IsEnabled = !_loading && _measurement == null && !_exporting;
         ExportButton.IsEnabled = !_loading && _directoryScan == null && _measurement == null && !_exporting && _view?.Count > 0;

@@ -8,8 +8,6 @@ internal sealed record PackageSnapshot(string FullName, string FamilyName, strin
 
 internal static class PackageUninstall
 {
-    internal const bool Enabled = false;
-
     internal static Package Find(string fullName) => new PackageManager().FindPackagesForUser(string.Empty)
         .SingleOrDefault(package => package.Id.FullName.Equals(fullName, StringComparison.OrdinalIgnoreCase));
 
