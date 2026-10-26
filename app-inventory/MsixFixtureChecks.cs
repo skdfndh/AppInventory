@@ -12,11 +12,33 @@ internal sealed record MsixFixture(string Token, string Name, string Publisher, 
 
 internal static class MsixFixtureChecks
 {
+    private static ProcessStartInfo PowerShell()
+    {
+        var info = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+        { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        // 中间进程继承的 PowerShell 7 模块路径会破坏 5.1 的证书提供程序加载。
+        info.Environment.Remove("PSModulePath");
+        return info;
+    }
+
+    private static void Invoke(ProcessStartInfo info)
+    {
+        using var process = Process.Start(info) ?? throw new IOException("无法启动专用 PowerShell 检查。");
+        var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(90000)) { process.Kill(true); process.WaitForExit(); throw new IOException("专用 PowerShell 检查超时。"); }
+        Task.WhenAll(output, error).GetAwaiter().GetResult();
+        if (process.ExitCode != 0) throw new IOException("专用 PowerShell 检查失败：" + error.Result + output.Result);
+    }
+
     internal static void Run(Action<bool, string> check)
     {
         var rejectedIdentity = false;
         try { PackageUninstall.Read(""); } catch (InvalidOperationException) { rejectedIdentity = true; }
         check(rejectedIdentity, "商店卸载必须有本次读取的完整包身份，不能使用名称或空身份");
+        var probe = PowerShell();
+        foreach (var argument in new[] { "-NoProfile", "-Command", "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; if (-not (Get-PSDrive -Name Cert -ErrorAction Stop)) { exit 1 }" }) probe.ArgumentList.Add(argument);
+        Invoke(probe);
+        check(true, "5.1 子进程独立加载证书提供程序，仅查询驱动，不导入或创建证书");
         if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") return;
         var token = Guid.NewGuid().ToString("N");
         var root = Path.Combine(AppContext.BaseDirectory, "read-only-fixtures", "msix", token);
@@ -27,22 +49,17 @@ internal static class MsixFixtureChecks
         var helper = Path.Combine(AppContext.BaseDirectory, "测试组件", "Create-MsixFixture.ps1");
         var approved = typeof(MsixFixtureChecks).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().Single(item => item.Key == "MsixFixtureScriptSHA256").Value;
         if (UninstallFiles.Hash(helper) != approved) throw new InvalidDataException("MSIX 夹具脚本摘要不匹配。");
-        void Invoke(string mode)
+        void FixtureScript(string mode)
         {
-            var info = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
-            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            var info = PowerShell();
             foreach (var argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", helper, "-Root", root, "-Token", token, "-Mode", mode }) info.ArgumentList.Add(argument);
-            using var process = Process.Start(info) ?? throw new IOException("无法启动隔离 MSIX 夹具脚本。");
-            var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
-            if (!process.WaitForExit(90000)) { process.Kill(true); process.WaitForExit(); throw new IOException("专用 MSIX 夹具脚本超时。"); }
-            Task.WhenAll(output, error).GetAwaiter().GetResult();
-            if (process.ExitCode != 0) throw new IOException("专用 MSIX 夹具失败：" + error.Result + output.Result);
+            Invoke(info);
         }
         MsixFixture fixture = null;
         string fullName = null;
         try
         {
-            Invoke("Build");
+            FixtureScript("Build");
             fixture = JsonSerializer.Deserialize<MsixFixture>(File.ReadAllText(Path.Combine(root, "msix-fixture.json")),
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? throw new InvalidDataException("MSIX 夹具标记缺失。");
             if (fixture.Token != token || fixture.Name != "AiFixture." + token || fixture.Publisher != "CN=AiFixture." + token)
@@ -72,7 +89,7 @@ internal static class MsixFixtureChecks
                         .SingleOrDefault(package => package.Id.Name == fixture.Name && package.Id.Publisher == fixture.Publisher)?.Id.FullName;
                 if (fullName != null && PackageUninstall.Find(fullName) != null) PackageUninstall.RemoveAsync(fullName).GetAwaiter().GetResult();
             }
-            finally { Invoke("Cleanup"); }
+            finally { FixtureScript("Cleanup"); }
             if (fixture != null)
             {
                 using var store = new X509Store(StoreName.TrustedPeople, StoreLocation.LocalMachine); store.Open(OpenFlags.ReadOnly);

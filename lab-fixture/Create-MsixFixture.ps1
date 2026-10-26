@@ -4,6 +4,8 @@ if($env:GITHUB_ACTIONS -ne 'true' -or $Token -notmatch '^[a-f0-9]{32}$'){throw '
 $taskIdentity=[Security.Principal.WindowsIdentity]::GetCurrent()
 $taskPrincipal=New-Object Security.Principal.WindowsPrincipal($taskIdentity)
 if(-not $taskPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Isolated MSIX fixture requires an existing administrator token.'}
+Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+[void](Get-PSDrive -Name Cert -ErrorAction Stop)
 $taskRoot=[IO.Path]::GetFullPath($Root)
 if((Split-Path -Leaf $taskRoot) -ne $Token -or $taskRoot -notmatch '\\read-only-fixtures\\msix\\'){throw 'Invalid MSIX fixture directory.'}
 $taskName='AiFixture.'+$Token
