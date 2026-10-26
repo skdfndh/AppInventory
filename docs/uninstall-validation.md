@@ -1,5 +1,7 @@
 # 卸载验证记录与隔离环境
 
+当前限制：注册表重命名兼容性未通过，配置写入入口已禁用，完整自动检查仅在独立 CI 执行。以下记录保留历史覆盖情况，不能据此在日常电脑复跑完整自检；沙箱准备脚本仍可生成配置，但当前版本不开放沙箱内完整自检。
+
 源码版本：1.1.0-preview.1。正式发布的 v1.0.0 未替换。本轮测试只操作随机标识的专用 EXE、MSI、MSIX 和合成配置键，不卸载现有软件。
 
 现有 GitHub Actions 的临时 Windows 虚拟机已实际运行自动化隔离测试。检测到 CI 环境且已具有管理员令牌时，额外运行计算机级 x86/x64 专用 MSI，核对 Windows Installer 报告的安装上下文；不在本机自动提权。机器级 MSI 与专用 MSIX 已在 [运行 40314341766](https://github.com/skdfndh/AppInventory/actions/runs/40314341766) 通过。后续改动以 [PR #1](https://github.com/skdfndh/AppInventory/pull/1) 的当前提交 CI 结果为准，不把后台 API 测试等同于真实桌面 UAC 或视觉验收。

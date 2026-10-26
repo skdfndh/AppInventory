@@ -55,6 +55,7 @@ internal sealed partial class UninstallWorkflow
 
     internal void IsolateRegistry(string id, bool acknowledged)
     {
+        if (!RegistryResiduals.WritesEnabled && !_fixture) throw new InvalidOperationException("注册表写入正在进行兼容性核验，当前版本仅提供只读预览。");
         using var execution = AcquireGlobal();
         using var lease = AcquireTask();
         RequireDesktopResiduals(); RequireVerified();
@@ -73,6 +74,7 @@ internal sealed partial class UninstallWorkflow
 
     internal void RestoreRegistry(string id)
     {
+        if (!RegistryResiduals.WritesEnabled && !_fixture) throw new InvalidOperationException("注册表写入正在进行兼容性核验，请保留现有备份与隔离配置，暂不执行恢复。");
         using var execution = AcquireGlobal();
         using var lease = AcquireTask();
         RequireDesktopResiduals();

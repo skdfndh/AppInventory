@@ -32,7 +32,7 @@
                     <Button x:Name="RestoreResidualButton" Content="恢复隔离文件" Click="Restore_Click" Margin="0,0,0,10"/>
                 </WrapPanel>
                 <TextBlock Text="当前用户配置键候选" FontSize="18" FontWeight="SemiBold" Margin="0,15,0,8"/>
-                <TextBlock Text="仅接受名称、安装路径、实际位置与当前用户所有权均符合条件的配置键。可能含个人设置，默认不选择；系统及机器级键不写入。备份加密保存在本机，不进入明文报告。" TextWrapping="Wrap"/>
+                <TextBlock Text="当前版本正在核验注册表兼容性，仅提供候选的只读预览，配置隔离和恢复已禁用。请保留已有备份与隔离配置。" TextWrapping="Wrap"/>
                 <ComboBox x:Name="RegistryCandidateBox" DisplayMemberPath="Label" SelectionChanged="RegistrySelection_Changed" Margin="0,10,0,8" Padding="7" AutomationProperties.Name="选择当前任务的注册表配置候选"/>
                 <TextBox Text="{Binding SelectedItem.Path, ElementName=RegistryCandidateBox, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" AutomationProperties.Name="当前配置候选的完整注册表路径"/>
                 <CheckBox x:Name="AcceptRegistry" Margin="0,10,0,10" Checked="Confirmation_Changed" Unchecked="Confirmation_Changed" AutomationProperties.Name="单独确认所选配置键"><TextBlock Text="我选择此配置键，理解可能包含个人设置；先加密备份，再做可恢复隔离，不永久删除。" TextWrapping="Wrap"/></CheckBox>

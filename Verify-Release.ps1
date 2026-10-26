@@ -1,5 +1,6 @@
 ﻿param([Parameter(Mandatory = $true)][string]$PackagePath)
 $ErrorActionPreference = 'Stop'
+if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Full package verification is restricted to an isolated CI environment. Do not run installation or registry tests on a daily-use computer.' }
 $resolvedPackage = (Resolve-Path -LiteralPath $PackagePath).Path
 $packageHash = (Get-FileHash -LiteralPath $resolvedPackage -Algorithm SHA256).Hash
 $checksumPath = $resolvedPackage + '.sha256'

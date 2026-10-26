@@ -45,9 +45,9 @@ public partial class UninstallWindow : Window
         ExportWorkflowButton.IsEnabled = !_busy && state != null && !_workflow.IsRunning;
         var registry = RegistryCandidateBox.SelectedItem as RegistryResidual;
         PreviewRegistryButton.IsEnabled = !_busy && state?.Plan.Package == null && state?.Result.Status == UninstallStatus.Verified && !_workflow.IsRunning;
-        IsolateRegistryButton.IsEnabled = !_busy && state?.Result.Status == UninstallStatus.Verified && !_workflow.IsRunning
+        IsolateRegistryButton.IsEnabled = RegistryResiduals.WritesEnabled && !_busy && state?.Result.Status == UninstallStatus.Verified && !_workflow.IsRunning
             && registry?.Status == "候选未选择" && AcceptRegistry.IsChecked == true;
-        RestoreRegistryButton.IsEnabled = !_busy && state != null && !_workflow.IsRunning
+        RestoreRegistryButton.IsEnabled = RegistryResiduals.WritesEnabled && !_busy && state != null && !_workflow.IsRunning
             && registry?.Status is "准备配置隔离" or "配置已隔离" or "准备配置恢复";
         if (state == null) { WorkflowPlanText.Text = "载入历史任务以查看结果或恢复隔离文件。"; return; }
         var plan = state.Plan;

@@ -20,6 +20,7 @@ internal sealed record RegistryVault(int Schema, string TaskId, string Id, strin
 
 internal static class RegistryResiduals
 {
+    internal static bool WritesEnabled => false;
     private const uint SecurityFlags = 5;
     [DllImport("advapi32.dll", CharSet = CharSet.Unicode)] private static extern int RegRenameKey(SafeRegistryHandle key, string name, string newName);
     [DllImport("advapi32.dll")] private static extern int RegGetKeySecurity(SafeRegistryHandle key, uint info, byte[] data, ref uint length);

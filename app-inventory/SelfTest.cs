@@ -10,6 +10,11 @@ internal static class SelfTest
 {
     public static int Run(string resultPath)
     {
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true")
+        {
+            Write(resultPath, new { passed = 0, error = "完整自检包含安装、卸载与注册表写入，现仅在独立 CI 环境运行；本机已阻止执行。" });
+            return 2;
+        }
         var checks = new List<string>();
         void Check(bool condition, string name)
         {

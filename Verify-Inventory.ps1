@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Full verification is restricted to an isolated CI environment. Do not run installation or registry tests on a daily-use computer.' }
 $taskRoot = $PSScriptRoot
 $logRoot = Join-Path $taskRoot ('logs\inventory-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 New-Item -ItemType Directory -Path $logRoot | Out-Null

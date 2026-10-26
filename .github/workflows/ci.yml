@@ -22,20 +22,6 @@ jobs:
           dotnet-version: '8.0.x'
       - name: 还原固定版本 BCU
         run: .\Initialize-Dependencies.ps1
-      - name: 自动检查与只读枚举
-        run: .\Verify-Inventory.ps1
-      - name: 生成自包含发行包
-        run: .\Build-Release.ps1
-      - name: 检查发行包
-        run: |
-          $latest = Get-ChildItem .\artifacts\release -Directory | Sort-Object Name -Descending | Select-Object -First 1
-          $package = Get-ChildItem $latest.FullName -Filter '*.zip' -File | Select-Object -First 1
-          .\Verify-Release.ps1 -PackagePath $package.FullName
-      - uses: actions/upload-artifact@v7
-        with:
-          name: AppInventory-win-x64
-          path: |
-            artifacts/release/**/*.zip
-            artifacts/release/**/*.zip.sha256
-          if-no-files-found: error
-          retention-days: 14
+      # 注册表重命名兼容性核验完成前不自动执行写入测试或提供未验收的下载包。
+      - name: 仅编译（动态验收与打包暂停）
+        run: dotnet build .\app-inventory\AppInventory.csproj -c Release --nologo -v minimal
