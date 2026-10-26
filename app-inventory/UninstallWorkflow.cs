@@ -456,7 +456,12 @@ internal sealed partial class UninstallWorkflow
         if (json.Length > 15 * 1024 * 1024) throw new InvalidDataException("任务记录超过大小限制，保留上次记录。");
         var data = ProtectedData.Protect(json, null, DataProtectionScope.CurrentUser);
         var temporary = Path.Combine(Root, Guid.NewGuid().ToString("N") + ".tmp");
-        File.WriteAllBytes(temporary, data); File.Move(temporary, path, true);
+        // 先刷新临时记录再替换，降低突然断电或蓝屏后任务记录变成全零的风险。
+        using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            stream.Write(data); stream.Flush(true);
+        }
+        File.Move(temporary, path, true);
     }
 
     private static bool SamePath(string a, string b) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(a))

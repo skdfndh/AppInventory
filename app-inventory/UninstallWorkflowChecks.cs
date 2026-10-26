@@ -207,6 +207,20 @@ internal static class UninstallWorkflowChecks
 
         using var success = new Fixture("normal");
         var workflow = UninstallWorkflow.Prepare(success.Row, true);
+        SelfTest.Progress("开始：仅云端模拟任务记录替换失败与重试");
+        var taskPath = Path.Combine(workflow.Root, "task.bin");
+        var previousTask = File.ReadAllBytes(taskPath);
+        using (var held = new FileStream(taskPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            check(Rejected(workflow.Recheck) && File.ReadAllBytes(taskPath).SequenceEqual(previousTask)
+                && UninstallWorkflow.Open(workflow.State.Id, true).State.Result.Status == UninstallStatus.Prepared,
+                "任务记录被占用时替换失败，上一份加密记录仍可读取且未改变");
+        var interruptedWrites = Directory.GetFiles(workflow.Root, "*.tmp");
+        check(interruptedWrites.Length == 1 && System.Text.Json.JsonSerializer.Deserialize<WorkflowState>(ProtectedData.Unprotect(
+                File.ReadAllBytes(interruptedWrites[0]), null, DataProtectionScope.CurrentUser), CatalogStorage.JsonOptions)?.Id == workflow.State.Id,
+            "替换失败保留完整可认证的加密临时记录，不截断原记录");
+        workflow.Recheck();
+        check(UninstallWorkflow.Open(workflow.State.Id, true).State.Result.Status == UninstallStatus.Prepared
+            && File.Exists(interruptedWrites[0]), "任务记录解除占用后可以重试保存，保留中断证据且不自动执行历史计划");
         check(Rejected(() => workflow.ExecuteAsync("错误名称", true, false, default).GetAwaiter().GetResult())
             && Rejected(() => workflow.ExecuteAsync(success.Row.Name, false, false, default).GetAwaiter().GetResult()) && File.Exists(success.MainPath),
             "未输入精确名称或未确认风险时不启动卸载器");
@@ -288,6 +302,9 @@ internal static class UninstallWorkflowChecks
         SelfTest.Progress("开始：仅云端篡改任务副本并核验拒绝");
         var changed = bytes.ToArray(); changed[^1] ^= 1; File.WriteAllBytes(encrypted, changed);
         try { check(Rejected(() => UninstallWorkflow.Open(reopened.State.Id, true)), "篡改 DPAPI 任务记录无法伪造隔离恢复授权"); }
+        finally { File.WriteAllBytes(encrypted, bytes); }
+        File.WriteAllBytes(encrypted, new byte[bytes.Length]);
+        try { check(Rejected(() => UninstallWorkflow.Open(reopened.State.Id, true)), "全零任务记录必须拒绝，不自动采用遗留临时文件或补报卸载成功"); }
         finally { File.WriteAllBytes(encrypted, bytes); }
         File.Copy(Path.Combine(success.Root, "program.backup"), success.MainPath);
         var staleSuccess = UninstallWorkflow.Open(reopened.State.Id, true); staleSuccess.Recheck();
