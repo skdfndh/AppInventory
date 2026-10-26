@@ -186,7 +186,7 @@ internal static class UninstallWorkflowChecks
         bool Rejected(Action action)
         {
             try { action(); return false; }
-            catch (Exception ex) when (ex is InvalidOperationException or IOException or CryptographicException or ArgumentException) { return true; }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException or CryptographicException or ArgumentException) { return true; }
         }
         WorkflowResult Execute(UninstallWorkflow workflow, CancellationToken token = default) => workflow.ExecuteAsync(workflow.State.Plan.Installation.Name, true, false, token).GetAwaiter().GetResult();
         var code = Guid.NewGuid().ToString("B");
