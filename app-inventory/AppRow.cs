@@ -1,6 +1,7 @@
 using System.Collections;
 using System.ComponentModel;
 using System.Globalization;
+using System.Text.Json.Serialization;
 
 namespace AppInventory;
 
@@ -14,6 +15,11 @@ internal sealed class AppRow : INotifyPropertyChanged
     public string Source { get; init; } = "桌面应用";
     public string ExecutablePath { get; init; } = "";
     public string ProductId { get; init; } = "";
+    // 卸载入口只来自本次系统读取，不能由历史快照重新授权。
+    [JsonIgnore]
+    public UninstallRegistration UninstallRegistration { get; init; }
+    [JsonIgnore]
+    public UninstallPreview UninstallPreview => UninstallPreflight.Create(this);
     public bool IsPortableCandidate { get; init; }
     public bool IsSingleFileCandidate { get; init; }
     public string RecognitionEvidence { get; init; } = "来自 Windows 安装记录。";

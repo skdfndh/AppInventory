@@ -1,0 +1,42 @@
+<Window x:Class="AppInventory.UninstallWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="应用卸载与恢复" Width="1040" Height="860" MinWidth="850" MinHeight="690"
+        WindowStartupLocation="CenterOwner" Background="#F4F5F1" Foreground="#23362F" FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="13">
+    <Grid Margin="24">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,16">
+            <TextBlock Text="应用卸载与恢复" FontSize="26" FontWeight="SemiBold"/>
+            <TextBlock Text="核对本次计划后才执行。厂商卸载操作无法由本工具撤销；隔离恢复仅还原残留文件。" TextWrapping="Wrap" Margin="0,8,0,0"/>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBox x:Name="WorkflowPlanText" IsReadOnly="True" TextWrapping="Wrap" Background="White" Padding="14" BorderThickness="0" AutomationProperties.Name="本次卸载计划与文件摘要"/>
+                <CheckBox x:Name="AcceptRisk" Margin="0,16,0,8" Checked="Confirmation_Changed" Unchecked="Confirmation_Changed" AutomationProperties.Name="确认本次卸载风险"><TextBlock Text="我已核对应用、命令和签名，理解卸载可能影响程序数据，仍执行本次卸载。" TextWrapping="Wrap"/></CheckBox>
+                <TextBlock Text="准确输入上方显示的应用名称：" Margin="0,0,0,6"/>
+                <TextBox x:Name="ConfirmName" Padding="8" TextChanged="Confirmation_Changed" AutomationProperties.Name="输入本次应用名称确认卸载"/>
+                <CheckBox x:Name="ElevateRequest" Margin="0,10,0,10" AutomationProperties.Name="仅为本次卸载申请管理员权限"><TextBlock Text="为本次卸载申请管理员权限（仅在确有需要时选择，会显示系统权限确认）" TextWrapping="Wrap"/></CheckBox>
+                <WrapPanel>
+                    <Button x:Name="RunWorkflowButton" Content="确认并开始卸载" Click="Execute_Click" IsEnabled="False" Margin="0,0,10,10"/>
+                    <Button x:Name="StopWaitButton" Content="停止等待（不终止卸载器）" Click="StopWait_Click" IsEnabled="False" Margin="0,0,10,10"/>
+                    <Button x:Name="RefreshTaskButton" Content="刷新任务状态" Click="RefreshTask_Click" Margin="0,0,10,10"/>
+                    <Button x:Name="ExportWorkflowButton" Content="导出任务报告…" Click="Export_Click" Margin="0,0,0,10"/>
+                    <Button Content="专用测试实验室…" Click="Lab_Click" Margin="10,0,0,10"/>
+                </WrapPanel>
+                <TextBlock Text="残留目录候选" FontSize="18" FontWeight="SemiBold" Margin="0,15,0,8"/>
+                <TextBlock Text="仅检查原始安装记录提供的目录。下载、同步内容和其他盘名称关联不会自动清理。默认不选择残留。" TextWrapping="Wrap"/>
+                <TextBox x:Name="ResidualFilesText" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="180" VerticalScrollBarVisibility="Auto" Margin="0,8,0,8" AutomationProperties.Name="残留目录与文件预览"/>
+                <CheckBox x:Name="AcceptResidual" Margin="0,0,0,10" Checked="Confirmation_Changed" Unchecked="Confirmation_Changed" AutomationProperties.Name="单独选择并确认整个残留目录"><TextBlock Text="选择上方整个安装目录残留，确认其中没有需要保留的个人或共享数据，移动至隔离区。" TextWrapping="Wrap"/></CheckBox>
+                <WrapPanel>
+                    <Button x:Name="PreviewResidualButton" Content="只读预览残留" Click="Preview_Click" Margin="0,0,10,10"/>
+                    <Button x:Name="IsolateResidualButton" Content="隔离所选目录残留" Click="Isolate_Click" IsEnabled="False" Margin="0,0,10,10"/>
+                    <Button x:Name="RestoreResidualButton" Content="恢复隔离文件" Click="Restore_Click" Margin="0,0,0,10"/>
+                </WrapPanel>
+                <TextBlock Text="历史任务与隔离恢复" FontWeight="SemiBold" Margin="0,12,0,8"/>
+                <ComboBox x:Name="WorkflowHistory" Padding="8" AutomationProperties.Name="历史卸载任务"/>
+                <Button x:Name="LoadWorkflowButton" Content="载入所选任务" Click="Load_Click" HorizontalAlignment="Left" Margin="0,8,0,12"/>
+                <TextBox x:Name="WorkflowEvents" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="220" VerticalScrollBarVisibility="Auto" Background="Transparent" BorderThickness="0" AutomationProperties.Name="本次卸载任务记录"/>
+            </StackPanel>
+        </ScrollViewer>
+        <TextBlock x:Name="WorkflowStatus" Grid.Row="2" TextWrapping="Wrap" Margin="0,16,0,0" Foreground="#42664C"/>
+    </Grid>
+</Window>

@@ -5,9 +5,9 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>AppInventory</AssemblyName>
-    <Version>1.0.0</Version>
+    <Version>1.1.0-preview.1</Version>
     <Product>应用清单</Product>
-    <Description>本地软件清单、便携候选与关联目录的只读管理工具</Description>
+    <Description>本地软件清单、受控卸载与可恢复的安装目录残留隔离</Description>
     <StartupObject>AppInventory.App</StartupObject>
     <OutputPath>..\artifacts\inventory\</OutputPath>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -22,19 +22,31 @@
     <Content Include="第三方修改说明.md" Link="第三方声明\修改说明.md" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="TaskScheduler-LICENSE.md" Link="第三方声明\TaskScheduler-LICENSE.md" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\artifacts\lab-fixture\TestApplication.exe" Link="测试组件\TestApplication.exe" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\artifacts\lab-fixture\RegisteredUninstaller.exe" Link="测试组件\RegisteredUninstaller.exe" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="BuildUninstallFixture" BeforeTargets="PrepareForBuild" Inputs="..\lab-fixture\Program.cs" Outputs="..\artifacts\lab-fixture\TestApplication.exe">
     <MakeDir Directories="..\artifacts\lab-fixture" />
     <Exec Command="&quot;$(SystemRoot)\Microsoft.NET\Framework64\v4.0.30319\csc.exe&quot; /nologo /target:exe /optimize+ /out:&quot;$(MSBuildProjectDirectory)\..\artifacts\lab-fixture\TestApplication.exe&quot; &quot;$(MSBuildProjectDirectory)\..\lab-fixture\Program.cs&quot;" />
   </Target>
-  <Target Name="StampUninstallFixtureHash" BeforeTargets="GetAssemblyAttributes" DependsOnTargets="BuildUninstallFixture">
+  <Target Name="BuildRegisteredUninstallFixture" BeforeTargets="PrepareForBuild" Inputs="..\lab-fixture\RegisteredUninstaller.cs" Outputs="..\artifacts\lab-fixture\RegisteredUninstaller.exe">
+    <MakeDir Directories="..\artifacts\lab-fixture" />
+    <Exec Command="&quot;$(SystemRoot)\Microsoft.NET\Framework64\v4.0.30319\csc.exe&quot; /nologo /target:exe /optimize+ /out:&quot;$(MSBuildProjectDirectory)\..\artifacts\lab-fixture\RegisteredUninstaller.exe&quot; &quot;$(MSBuildProjectDirectory)\..\lab-fixture\RegisteredUninstaller.cs&quot;" />
+  </Target>
+  <Target Name="StampUninstallFixtureHash" BeforeTargets="GetAssemblyAttributes" DependsOnTargets="BuildUninstallFixture;BuildRegisteredUninstallFixture">
     <GetFileHash Files="..\artifacts\lab-fixture\TestApplication.exe" Algorithm="SHA256">
       <Output TaskParameter="Items" ItemName="UninstallFixtureHash" />
+    </GetFileHash>
+    <GetFileHash Files="..\artifacts\lab-fixture\RegisteredUninstaller.exe" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="RegisteredFixtureHash" />
     </GetFileHash>
     <ItemGroup>
       <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
         <_Parameter1>LabFixtureSHA256</_Parameter1>
         <_Parameter2>%(UninstallFixtureHash.FileHash)</_Parameter2>
+      </AssemblyAttribute>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>RegisteredFixtureSHA256</_Parameter1>
+        <_Parameter2>%(RegisteredFixtureHash.FileHash)</_Parameter2>
       </AssemblyAttribute>
     </ItemGroup>
   </Target>

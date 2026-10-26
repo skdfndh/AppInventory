@@ -81,7 +81,10 @@ internal static class SelfTest
             CheckPortableScanning(Check);
             CheckWorkbench(window, Check);
             CheckReleaseReadiness(window, Check);
+            UninstallPreflightChecks.Run(window, Check);
             UninstallLabChecks.Run(Check);
+            UninstallWorkflowChecks.Run(window, Check);
+            MsiFixtureChecks.Run(Check);
             window.Close();
             application.Shutdown();
             Write(resultPath, new { passed = checks.Count, checks });
@@ -105,6 +108,11 @@ internal static class SelfTest
                 withDescription = result.Apps.Count(x => !string.IsNullOrWhiteSpace(x.Description)),
                 officialDescriptions = result.Apps.Count(x => x.DescriptionUrl.Length > 0),
                 awaitingPurposeVerification = result.Apps.Count(x => x.DescriptionSource.Contains("用途待核实")),
+                withUninstallRegistration = result.Apps.Count(x => x.UninstallRegistration != null),
+                uninstallReadErrors = result.Apps.Count(x => x.UninstallRegistration?.ReadError.Length > 0),
+                withStandardUninstallCommand = result.Apps.Count(x => !string.IsNullOrWhiteSpace(x.UninstallRegistration?.Command)),
+                quietOnlyUninstallEntries = result.Apps.Count(x => x.UninstallRegistration is { } entry
+                    && string.IsNullOrWhiteSpace(entry.Command) && !string.IsNullOrWhiteSpace(entry.QuietCommand)),
                 warnings = result.Warnings,
                 deletionHandlerConfigured = UninstallTools.UninstallToolsGlobalConfig.FileDeletionHandler != null
             });

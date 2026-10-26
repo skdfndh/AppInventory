@@ -54,6 +54,7 @@ internal static class ReadOnlyCatalog
                     Name = entry.DisplayName, Version = entry.DisplayVersion ?? "", Publisher = entry.Publisher ?? "",
                     InstallPath = path.Length == 0 ? "" : Environment.ExpandEnvironmentVariables(path), PathSource = pathSource,
                     ExecutablePath = executable,
+                    UninstallRegistration = UninstallPreflight.Read(entry),
                     ReportedBytes = kb > 0 && kb <= long.MaxValue / 1024 ? kb * 1024 : null
                 };
                 SoftwareDescriptions.Apply(row, string.IsNullOrWhiteSpace(entry.Comment) ? ExecutableFacts.Read(executable)?.Description : entry.Comment,
@@ -91,7 +92,7 @@ internal static class ReadOnlyCatalog
         return new CatalogResult(apps.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ToList(), warnings);
     }
 
-    private static string ReadIconExecutable(string icon)
+    internal static string ReadIconExecutable(string icon)
     {
         if (string.IsNullOrWhiteSpace(icon)) return "";
         icon = icon.Trim();

@@ -77,7 +77,7 @@
                 <Button x:Name="ScanButton" Content="扫描范围…" Click="Scan_Click" Margin="0,0,10,0" AutomationProperties.Name="选择便携软件及其他盘扫描范围" />
                 <Button x:Name="RefreshButton" Content="刷新清单" Click="Refresh_Click" AutomationProperties.Name="刷新应用清单" ToolTip="重新读取安装记录（F5）" />
                 <Button x:Name="ExportButton" Content="导出结果…" Click="Export_Click" Margin="10,0,0,0" AutomationProperties.Name="导出当前筛选结果" ToolTip="导出 CSV 或 JSON；文件包含软件名称和本地路径" />
-                <Button Content="卸载测试…" Click="UninstallLab_Click" Margin="10,0,0,0" AutomationProperties.Name="打开专用测试应用卸载验证" ToolTip="仅操作本工具创建的测试应用，清单中的现有软件保持只读" />
+                <Button Content="卸载管理…" Click="UninstallHistory_Click" Margin="10,0,0,0" AutomationProperties.Name="打开卸载任务与隔离恢复" ToolTip="查看历史任务、恢复隔离文件，或打开专用测试实验室" />
             </StackPanel>
         </Grid>
         <Grid Grid.Row="1" Margin="0,25,0,18">
@@ -178,6 +178,19 @@
                                      AutomationProperties.Name="选中应用的完整路径" />
                             <TextBlock Text="{Binding PathSource}" Foreground="#74816E" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0" />
                             <Button Content="复制路径" Click="CopyPath_Click" HorizontalAlignment="Left" Padding="10,5" Margin="0,10,0,0" AutomationProperties.Name="复制选中应用路径" />
+                            <TextBlock Text="卸载预检 · 只读" Style="{StaticResource DetailLabel}" />
+                            <TextBlock Text="{Binding UninstallPreview.Status}" TextWrapping="Wrap" LineHeight="20" />
+                            <TextBlock Text="{Binding UninstallPreview.EntryKind}" FontSize="11" Foreground="#60715D" Margin="0,6,0,0" />
+                            <TextBlock Text="{Binding UninstallPreview.Scope}" TextWrapping="Wrap" FontSize="11" Foreground="#60715D" Margin="0,6,0,0" />
+                            <TextBlock Text="安装记录位置" Style="{StaticResource DetailLabel}" />
+                            <TextBox Text="{Binding UninstallPreview.RegistryPath, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Padding="0" AutomationProperties.Name="卸载预检的安装记录位置" />
+                            <TextBlock Text="标准卸载入口（未经安全核验）" Style="{StaticResource DetailLabel}" />
+                            <TextBox x:Name="UninstallCommandText" Text="{Binding UninstallPreview.Command, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Padding="0" AutomationProperties.Name="只读标准卸载命令，不执行" />
+                            <TextBlock Text="静默入口（仅展示，不自动选用）" Style="{StaticResource DetailLabel}" />
+                            <TextBox x:Name="QuietUninstallCommandText" Text="{Binding UninstallPreview.QuietCommand, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" Padding="0" AutomationProperties.Name="只读静默卸载命令，不执行" />
+                            <TextBlock Text="{Binding UninstallPreview.Boundary}" TextWrapping="Wrap" FontSize="11" Foreground="#60715D" Margin="0,12,0,0" LineHeight="19" />
+                            <Button x:Name="UninstallButton" Content="卸载此应用…" Click="Uninstall_Click" Margin="0,12,0,0" AutomationProperties.Name="预检并确认卸载选中应用" />
+                            <Button Content="卸载记录与隔离恢复…" Click="UninstallHistory_Click" Margin="0,8,0,0" AutomationProperties.Name="打开卸载任务和隔离恢复记录" />
                             <Border BorderBrush="#D4DECE" BorderThickness="0,1,0,0" Margin="0,23,0,0" Padding="0,19,0,0">
                                 <StackPanel>
                                     <TextBlock Text="{Binding SizeDisplay}" FontSize="28" FontWeight="SemiBold" Foreground="#285A41" />
