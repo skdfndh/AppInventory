@@ -54,6 +54,7 @@ internal static class ReadOnlyCatalog
                     Name = entry.DisplayName, Version = entry.DisplayVersion ?? "", Publisher = entry.Publisher ?? "",
                     InstallPath = path.Length == 0 ? "" : Environment.ExpandEnvironmentVariables(path), PathSource = pathSource,
                     ExecutablePath = executable,
+                    UninstallRegistration = UninstallPreflight.Read(entry),
                     ReportedBytes = kb > 0 && kb <= long.MaxValue / 1024 ? kb * 1024 : null
                 };
                 SoftwareDescriptions.Apply(row, string.IsNullOrWhiteSpace(entry.Comment) ? ExecutableFacts.Read(executable)?.Description : entry.Comment,
@@ -79,7 +80,7 @@ internal static class ReadOnlyCatalog
                         Name = string.IsNullOrWhiteSpace(package.DisplayName) ? package.Id.Name : package.DisplayName,
                         Version = $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}",
                         Publisher = package.PublisherDisplayName ?? "", InstallPath = path,
-                        ProductId = package.Id.Name, PathSource = "Windows 包管理接口提供", Source = "商店 / MSIX 应用"
+                        ProductId = package.Id.Name, PackageFullName = package.Id.FullName, PathSource = "Windows 包管理接口提供", Source = "商店 / MSIX 应用"
                     };
                     SoftwareDescriptions.Apply(row, ReadPackageDescription(package, path, cancellationToken), "应用包显示说明 / 清单说明");
                     apps.Add(row);
@@ -91,7 +92,7 @@ internal static class ReadOnlyCatalog
         return new CatalogResult(apps.OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ToList(), warnings);
     }
 
-    private static string ReadIconExecutable(string icon)
+    internal static string ReadIconExecutable(string icon)
     {
         if (string.IsNullOrWhiteSpace(icon)) return "";
         icon = icon.Trim();

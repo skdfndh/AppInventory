@@ -63,7 +63,7 @@ internal static class PortableScanner
     public static PortableScanResult Scan(ScanScope scope, IReadOnlyList<AppRow> installed, IProgress<ScanProgress> progress, CancellationToken token)
     {
         var roots = NormalizeRoots(scope.Roots);
-        var exclusions = NormalizeRoots(scope.Exclusions.Concat(new[] { Environment.GetFolderPath(Environment.SpecialFolder.Windows), UninstallLab.LabRoot }).Where(path => !string.IsNullOrWhiteSpace(path)));
+        var exclusions = NormalizeRoots(scope.Exclusions.Concat(new[] { Environment.GetFolderPath(Environment.SpecialFolder.Windows), UninstallLab.LabRoot, UninstallWorkflow.TaskRoot }).Where(path => !string.IsNullOrWhiteSpace(path)));
         var candidates = new List<AppRow>();
         var folders = new Dictionary<string, List<FolderSnapshot>>(StringComparer.OrdinalIgnoreCase);
         var installedPaths = installed.Where(row => !row.IsPortableCandidate && Path.IsPathFullyQualified(row.InstallPath))
@@ -78,7 +78,7 @@ internal static class PortableScanner
             token.ThrowIfCancellationRequested();
             if (depth > 512 || exclusions.Any(exclusion => IsWithin(path, exclusion))) { skipped++; return new(path, 0, 0, 1); }
             var folderName = Path.GetFileName(Path.TrimEndingDirectorySeparator(path));
-            if (ExcludedNames.Contains(folderName)) { skipped++; return new(path, 0, 0, 1); }
+            if (ExcludedNames.Contains(folderName) || folderName.StartsWith(".AppInventory-Quarantine-", StringComparison.OrdinalIgnoreCase)) { skipped++; return new(path, 0, 0, 1); }
             try
             {
                 if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) { skipped++; return new(path, 0, 0, 1); }

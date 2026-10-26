@@ -1,0 +1,147 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text;
+using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
+
+namespace AppInventory;
+
+internal sealed record RegistryDatum(string Name, RegistryValueKind Kind, string Data);
+internal sealed record RegistryTree(string Security, List<RegistryDatum> Values, Dictionary<string, RegistryTree> Children);
+internal sealed record RegistryResidual(string Id, string Path, string Hash, int Keys, int Values, string Status)
+{
+    public string Label => Path + " · " + Keys + " 个键 / " + Values + " 个值 · " + Status;
+}
+internal sealed record RegistryVault(int Schema, string TaskId, string Id, string Path, string Hash, RegistryTree Tree);
+
+internal static class RegistryResiduals
+{
+    internal static bool WritesEnabled => false;
+    private const uint SecurityFlags = 5;
+    [DllImport("advapi32.dll")] private static extern int RegGetKeySecurity(SafeRegistryHandle key, uint info, byte[] data, ref uint length);
+    [DllImport("advapi32.dll")] private static extern int RegSetKeySecurity(SafeRegistryHandle key, uint info, byte[] data);
+    [DllImport("ntdll.dll")] private static extern int NtQueryKey(SafeRegistryHandle key, int informationClass, IntPtr data, uint length, out uint required);
+    private static readonly string UserSid = ReadUserSid();
+    private static string ReadUserSid() { using var user = WindowsIdentity.GetCurrent(); return user.User.Value; }
+
+    internal static string SubKey(string fullPath)
+    {
+        const string root = "HKEY_CURRENT_USER\\";
+        if (!fullPath.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("注册表隔离仅支持当前用户。");
+        var subkey = fullPath[root.Length..];
+        var parts = subkey.Split('\\');
+        var index = parts.Length > 1 && parts[1].Equals("Wow6432Node", StringComparison.OrdinalIgnoreCase) ? 2 : 1;
+        var forbidden = new[] { "Microsoft", "Windows", "Classes", "Policies", "Clients", "RegisteredApplications" };
+        if (!parts[0].Equals("Software", StringComparison.OrdinalIgnoreCase) || parts.Length <= index || parts.Length > 8
+            || parts.Any(part => part.Length == 0 || part is "." or ".." || part.Contains('/') || part.Any(char.IsControl))
+            || forbidden.Contains(parts[index], StringComparer.OrdinalIgnoreCase)) throw new InvalidOperationException("系统、共享根或不明确的注册表范围不能隔离。");
+        return subkey;
+    }
+
+    internal static bool Exists(string fullPath)
+    {
+        using var root = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+        using var key = root.OpenSubKey(SubKey(fullPath), false);
+        if (key == null) return false;
+        CheckCanonical(key, SubKey(fullPath));
+        return true;
+    }
+
+    private static void CheckCanonical(RegistryKey key, string subkey)
+    {
+        NtQueryKey(key.Handle, 3, IntPtr.Zero, 0, out var required);
+        if (required < 4 || required > 65536) throw new InvalidOperationException("无法核对注册表键的实际位置。");
+        var memory = Marshal.AllocHGlobal((int)required);
+        try
+        {
+            if (NtQueryKey(key.Handle, 3, memory, required, out _) != 0) throw new InvalidOperationException("无法核对注册表键的实际位置。");
+            var length = Marshal.ReadInt32(memory);
+            if (length < 0 || length > required - 4) throw new InvalidOperationException("注册表位置查询返回无效长度。");
+            var actual = Marshal.PtrToStringUni(memory + 4, length / 2);
+            if (!string.Equals(actual, "\\REGISTRY\\USER\\" + UserSid + "\\" + subkey, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("注册表键经过链接或重定向，拒绝写入。");
+        }
+        finally { Marshal.FreeHGlobal(memory); }
+    }
+
+    internal static RegistryTree Read(string fullPath, CancellationToken cancellationToken = default)
+    {
+        var subkey = SubKey(fullPath);
+        using var root = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
+        using var key = root.OpenSubKey(subkey, false) ?? throw new InvalidOperationException("配置键已消失。");
+        var count = 0;
+        long bytes = 0;
+        RegistryTree Visit(RegistryKey current, string path, int depth)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (depth > 16 || ++count > 5000) throw new InvalidOperationException("配置树过大，拒绝隔离。");
+            CheckCanonical(current, path);
+            uint length = 0; var code = RegGetKeySecurity(current.Handle, SecurityFlags, null, ref length);
+            if (code != 122 || length > 65536) throw new InvalidOperationException("无法完整读取配置键权限。");
+            var security = new byte[length];
+            if (RegGetKeySecurity(current.Handle, SecurityFlags, security, ref length) != 0) throw new InvalidOperationException("无法完整读取配置键权限。");
+            var descriptor = new RawSecurityDescriptor(security, 0);
+            bytes += security.Length;
+            if (bytes > 8 * 1024 * 1024) throw new InvalidOperationException("配置权限数据过大，拒绝隔离。");
+            if (descriptor.Owner?.Value != UserSid) throw new InvalidOperationException("配置键不由当前用户所有，保留只读，不隔离。");
+            var values = new List<RegistryDatum>();
+            foreach (var name in current.GetValueNames().OrderBy(name => name, StringComparer.Ordinal))
+            {
+                if (++count > 5000) throw new InvalidOperationException("配置值过多，拒绝隔离。");
+                var kind = current.GetValueKind(name);
+                var value = current.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+                var data = kind switch
+                {
+                    RegistryValueKind.String or RegistryValueKind.ExpandString => (string)value,
+                    RegistryValueKind.MultiString => JsonSerializer.Serialize((string[])value),
+                    RegistryValueKind.Binary or RegistryValueKind.None => Convert.ToBase64String((byte[])value),
+                    RegistryValueKind.DWord => ((int)value).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    RegistryValueKind.QWord => ((long)value).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    _ => throw new InvalidOperationException("包含不支持的配置值类型，拒绝隔离。")
+                };
+                if (data == null || data.Length > 1024 * 1024) throw new InvalidOperationException("配置值无效或过大，拒绝隔离。");
+                bytes += Encoding.UTF8.GetByteCount(name) + Encoding.UTF8.GetByteCount(data);
+                if (bytes > 8 * 1024 * 1024) throw new InvalidOperationException("配置总量过大，拒绝隔离。");
+                values.Add(new(name, kind, data));
+            }
+            var children = new Dictionary<string, RegistryTree>(StringComparer.Ordinal);
+            foreach (var name in current.GetSubKeyNames().OrderBy(name => name, StringComparer.Ordinal))
+            {
+                if (name.Length == 0 || name is "." or ".." || name.Contains('/') || name.Contains('\\') || name.Any(char.IsControl))
+                    throw new InvalidOperationException("子键名称存在歧义，保留原配置。");
+                using var child = current.OpenSubKey(name, false) ?? throw new InvalidOperationException("配置子键无法完整读取。");
+                children.Add(name, Visit(child, path + "\\" + name, depth + 1));
+            }
+            return new(Convert.ToBase64String(security), values, children);
+        }
+        return Visit(key, subkey, 0);
+    }
+
+    internal static string Hash(RegistryTree tree) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(tree, CatalogStorage.JsonOptions)));
+    internal static (int Keys, int Values) Count(RegistryTree tree)
+    {
+        var keys = 1; var values = tree.Values.Count;
+        foreach (var child in tree.Children.Values) { var count = Count(child); keys += count.Keys; values += count.Values; }
+        return (keys, values);
+    }
+
+    internal static string Quarantine(string fullPath, string id)
+    {
+        if (!Guid.TryParseExact(id, "N", out _)) throw new InvalidOperationException("配置隔离标识无效。");
+        SubKey(fullPath);
+        return fullPath[..(fullPath.LastIndexOf('\\') + 1)] + ".AppInventory-Quarantine-" + id;
+    }
+
+    internal static void SetFixtureOwner(RegistryKey key)
+    {
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true") throw new InvalidOperationException("专用配置权限测试仅允许独立 CI 环境。");
+        var descriptor = new RawSecurityDescriptor("O:" + UserSid);
+        var data = new byte[descriptor.BinaryLength]; descriptor.GetBinaryForm(data, 0);
+        var code = RegSetKeySecurity(key.Handle, 1, data);
+        if (code != 0) throw new Win32Exception(code, "测试配置所有者设置失败。");
+    }
+}

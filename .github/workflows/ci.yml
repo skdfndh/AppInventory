@@ -10,7 +10,11 @@ permissions:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     defaults:
       run:
@@ -22,20 +26,24 @@ jobs:
           dotnet-version: '8.0.x'
       - name: 还原固定版本 BCU
         run: .\Initialize-Dependencies.ps1
-      - name: 自动检查与只读枚举
+      - name: 隔离环境专用夹具验收（不含注册表重命名）
         run: .\Verify-Inventory.ps1
-      - name: 生成自包含发行包
+      - name: 生成自包含包（仅临时验收）
         run: .\Build-Release.ps1
-      - name: 检查发行包
+      - name: 验证解压后的自包含包
         run: |
           $latest = Get-ChildItem .\artifacts\release -Directory | Sort-Object Name -Descending | Select-Object -First 1
           $package = Get-ChildItem $latest.FullName -Filter '*.zip' -File | Select-Object -First 1
           .\Verify-Release.ps1 -PackagePath $package.FullName
-      - uses: actions/upload-artifact@v7
+      # 只保存合成检查名称与阶段；不上传真实清单、配置值或未验收发行包。
+      - name: 保留检查阶段
+        if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: AppInventory-win-x64
+          name: self-test-progress-${{ matrix.os }}
           path: |
-            artifacts/release/**/*.zip
-            artifacts/release/**/*.zip.sha256
-          if-no-files-found: error
-          retention-days: 14
+            logs/inventory-*/self-test.json.progress.jsonl
+            artifacts/package-check/*/self-test.json.progress.jsonl
+            artifacts/package-check/*/verification.json
+          if-no-files-found: warn
+          retention-days: 7

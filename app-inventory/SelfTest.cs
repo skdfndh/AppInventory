@@ -8,13 +8,32 @@ namespace AppInventory;
 
 internal static class SelfTest
 {
+    private static string _progressPath;
+
+    internal static void Progress(string stage)
+    {
+        if (_progressPath == null) return;
+        var line = JsonSerializer.Serialize(new { time = DateTimeOffset.UtcNow, stage }) + Environment.NewLine;
+        // 先落盘再执行下一阶段，中断后仍可分辨最后开始与完成的检查。
+        using var stream = new FileStream(_progressPath, FileMode.Append, FileAccess.Write, FileShare.Read);
+        stream.Write(System.Text.Encoding.UTF8.GetBytes(line)); stream.Flush(true);
+    }
+
     public static int Run(string resultPath)
     {
+        if (Environment.GetEnvironmentVariable("GITHUB_ACTIONS") != "true")
+        {
+            Write(resultPath, new { passed = 0, error = "完整自检包含安装、卸载与注册表写入，现仅在独立 CI 环境运行；本机已阻止执行。" });
+            return 2;
+        }
         var checks = new List<string>();
+        _progressPath = resultPath + ".progress.jsonl";
+        Progress("开始：隔离环境完整自检");
         void Check(bool condition, string name)
         {
             if (!condition) throw new InvalidOperationException("验证失败：" + name);
             checks.Add(name);
+            Progress("通过：" + name);
         }
         try
         {
@@ -81,13 +100,19 @@ internal static class SelfTest
             CheckPortableScanning(Check);
             CheckWorkbench(window, Check);
             CheckReleaseReadiness(window, Check);
-            UninstallLabChecks.Run(Check);
+            UninstallPreflightChecks.Run(window, Check);
+            Progress("开始：专用卸载实验室检查"); UninstallLabChecks.Run(Check);
+            Progress("开始：桌面 EXE 正式卸载流程检查"); UninstallWorkflowChecks.Run(window, Check);
+            Progress("开始：专用 x86/x64 MSI 检查"); MsiFixtureChecks.Run(Check);
+            Progress("开始：Inno 专用安装器检查"); InnoFixtureChecks.Run(Check);
+            Progress("开始：专用 MSIX 检查"); MsixFixtureChecks.Run(Check);
+            Progress("开始：注册表只读预览与备份检查"); UninstallWorkflowChecks.RunRegistry(window, Check);
             window.Close();
             application.Shutdown();
             Write(resultPath, new { passed = checks.Count, checks });
             return 0;
         }
-        catch (Exception ex) { Write(resultPath, new { passed = checks.Count, checks, error = ex.ToString() }); return 1; }
+        catch (Exception ex) { Progress("失败：" + ex.GetType().Name); Write(resultPath, new { passed = checks.Count, checks, error = ex.ToString() }); return 1; }
     }
 
     public static int ReadInstalled(string resultPath)
@@ -105,6 +130,11 @@ internal static class SelfTest
                 withDescription = result.Apps.Count(x => !string.IsNullOrWhiteSpace(x.Description)),
                 officialDescriptions = result.Apps.Count(x => x.DescriptionUrl.Length > 0),
                 awaitingPurposeVerification = result.Apps.Count(x => x.DescriptionSource.Contains("用途待核实")),
+                withUninstallRegistration = result.Apps.Count(x => x.UninstallRegistration != null),
+                uninstallReadErrors = result.Apps.Count(x => x.UninstallRegistration?.ReadError.Length > 0),
+                withStandardUninstallCommand = result.Apps.Count(x => !string.IsNullOrWhiteSpace(x.UninstallRegistration?.Command)),
+                quietOnlyUninstallEntries = result.Apps.Count(x => x.UninstallRegistration is { } entry
+                    && string.IsNullOrWhiteSpace(entry.Command) && !string.IsNullOrWhiteSpace(entry.QuietCommand)),
                 warnings = result.Warnings,
                 deletionHandlerConfigured = UninstallTools.UninstallToolsGlobalConfig.FileDeletionHandler != null
             });

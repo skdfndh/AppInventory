@@ -1,8 +1,10 @@
 # 应用清单 AppInventory
 
+当前安全限制：1.1 预览代码已移除注册表重命名和自动写回，仅提供配置只读预览与加密备份。完整自检仅在 GitHub 托管的 Windows 临时环境执行，日常电脑入口拒绝运行。CI 暂不上传发行包；日常使用仍以已发布的 1.0 清单版为准，不运行历史 1.1 构建或卸载实验室。
+
 查看 Windows 已安装软件和便携程序候选，汇总名称、版本、路径、占用空间、说明来源，以及其他磁盘上的可能关联目录。
 
-当前版本 **1.0.0**，面向 Windows 10/11 x64。日常清单保持只读；独立卸载实验室只接受本工具创建的专用测试应用。
+稳定版 **1.0.0** 已发布；当前源码为 **1.1.0-preview.2**，面向 Windows 10/11 x64。清单表格保持只读；预览版增加独立确认的桌面 EXE/MSI、当前用户商店应用卸载、目录可恢复隔离与配置只读备份。现有软件未用于卸载测试。
 
 ## 能做什么
 
@@ -12,6 +14,8 @@
 - 保存设置与历史快照，导出当前筛选和排序后的 CSV/JSON。
 - 使用专用测试应用验证卸载调用、结果确认、残留预览、缓存隔离与恢复。
 
+卸载流程、支持范围和未验收项目见[卸载实施计划](docs/uninstall-roadmap.md)。需要精确系统身份、本次预检、风险确认及输入应用名称。结果未确认、受保护记录、共享/个人目录不开放隔离；目录恢复不覆盖既有数据。配置仅备份符合名称、安装路径和所有权条件的当前用户键，不修改原键和值；商店包由 Windows 管理。配置清理、便携目录删除和永久删除未开放。此改动不替换已发布的 v1.0.0。
+
 关联目录可能包含个人文件；名称匹配不证明归属或可删除，空间也不等于可释放容量。扫描不会运行发现的程序，不自动联网查询或上传软件与路径信息。
 
 ## 使用发行包
@@ -20,7 +24,7 @@
 
 首次启动读取安装记录。点击“扫描范围…”选择固定磁盘、额外目录或排除项；扫描完成后合并便携候选。完整操作及数据边界见[使用说明](app-inventory/README.md)。
 
-源代码：[skdfndh/AppInventory](https://github.com/skdfndh/AppInventory)。Windows CI 生成的 ZIP 与 SHA256 可在成功运行的 Actions 记录中获取。
+源代码：[skdfndh/AppInventory](https://github.com/skdfndh/AppInventory)。当前 CI 仅保存合成检查阶段，不提供新的预览下载包；已发布的 1.0 ZIP 与 SHA256 位于 Releases。
 
 ## 从源码运行
 
@@ -32,8 +36,7 @@
 git clone https://github.com/skdfndh/AppInventory.git
 Set-Location AppInventory
 .\Initialize-Dependencies.ps1
-.\Verify-Inventory.ps1
-.\Start-Inventory.ps1 -Development
+dotnet build .\app-inventory\AppInventory.csproj -c Release
 ```
 
 初始化脚本下载 [BCU](https://github.com/Klocman/Bulk-Crap-Uninstaller) 的固定提交 `30da609384c98ba6e35c6530129541ea4ff3970a`，应用 [bcu-core.patch](bcu-core.patch)，再核对实际差异。已有不同版本或其他本地改动时停止，不覆盖源码。首次初始化和 NuGet 还原需要联网。
@@ -45,6 +48,8 @@ dotnet build .\app-inventory\AppInventory.csproj -c Release
 ```
 
 ## 测试和打包
+
+以下完整验收命令仅在独立 CI 环境执行；本机不设置 CI 环境变量绕过保护。编译可以在本机进行，编译通过不等于动态验收通过。
 
 ```powershell
 .\Verify-Inventory.ps1
@@ -59,9 +64,11 @@ $package = Get-ChildItem $latest.FullName -Filter '*.zip' -File | Select-Object 
 .\Verify-Release.ps1 -PackagePath $package.FullName
 ```
 
-验证会从 ZIP 解压副本运行自动检查和真实只读枚举。测试只运行固定摘要的随包测试组件，并在新建夹具内进行受控移动、隔离及恢复；不永久删除测试程序，不卸载或清理现有软件。结果保留在 `logs/` 和 `artifacts/package-check/`，不会提交到 Git。
+验证会从 ZIP 解压副本运行自动检查和真实只读枚举。测试仅运行随包专用组件，新建随机身份的 EXE、x86/x64 MSI 与合成配置键，验证卸载、加密备份、隔离及恢复；不卸载或清理现有软件。GitHub Actions 的临时 Windows 环境额外执行机器级 MSI 与专用签名 MSIX，并回收自己创建的测试证书。本机不导入证书或安装 MSIX。结果保留在 `logs/` 和 `artifacts/package-check/`，不会提交到 Git。
 
-Windows CI 运行相同流程并上传 ZIP 与摘要文件。远程 CI 需要在推送到 GitHub 后实际运行，本地构建通过不代表已验证所有 Windows 配置。
+`Prepare-Sandbox.ps1` 保留为配置准备工具；当前版本不开放沙箱内完整自检，也不自动启用系统功能。家庭版和 Docker 限制见[隔离验证说明](docs/uninstall-validation.md)。
+
+Windows CI 在 Windows Server 2022/2025 临时环境执行专用夹具验证，再生成并解压自包含包复验；仅保留合成进度及验收摘要，不上传发行包。这些环境不等同于 Windows 10/11 桌面交互验收。
 
 ## 目录
 

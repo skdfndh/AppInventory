@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private bool _allFixed = true;
     private readonly bool _persist;
     private bool _exporting;
+    private bool _uninstallPlanning;
     private List<AppRow> _history = new();
     private DateTimeOffset? _scannedAt;
     private List<string> _scannedRoots = new();
@@ -38,7 +39,7 @@ public partial class MainWindow : Window
     {
         _persist = loadInstalled;
         InitializeComponent();
-        Title = "应用清单 " + typeof(MainWindow).Assembly.GetName().Version?.ToString(3) + " · 只读清单";
+        Title = "应用清单 " + FileVersionInfo.GetVersionInfo(typeof(MainWindow).Assembly.Location).ProductVersion?.Split('+')[0] + " · 本地软件管理";
         SetApps(new List<AppRow>());
         CommandBindings.Add(new CommandBinding(ApplicationCommands.Find, (_, _) => { SearchBox.Focus(); SearchBox.SelectAll(); }));
         InputBindings.Add(new KeyBinding(ApplicationCommands.Find, Key.F, ModifierKeys.Control));
@@ -177,7 +178,25 @@ public partial class MainWindow : Window
         SetApps(PortableScanner.Merge(_installedApps, result));
     }
 
-    private void UninstallLab_Click(object sender, RoutedEventArgs e) => new UninstallLabWindow(this).ShowDialog();
+    private void UninstallHistory_Click(object sender, RoutedEventArgs e) => new UninstallWindow(this).ShowDialog();
+
+    private async void Uninstall_Click(object sender, RoutedEventArgs e)
+    {
+        if (_uninstallPlanning || AppsGrid.SelectedItem is not AppRow row) return;
+        _uninstallPlanning = true; UpdateButtons();
+        StatusText.Text = "正在重新核对安装身份、卸载命令与文件摘要，尚未执行卸载…";
+        try
+        {
+            var workflow = await Task.Run(() => UninstallWorkflow.Prepare(row));
+            if (_lifetime.IsCancellationRequested) return;
+            var dialog = new UninstallWindow(this, workflow);
+            dialog.ShowDialog();
+            if (dialog.Executed) await RefreshAsync();
+            StatusText.Text = "卸载任务已保存，可在卸载记录中查看结果或恢复隔离文件。";
+        }
+        catch (Exception ex) { StatusText.Text = "卸载预检被阻止：" + ex.Message; }
+        finally { _uninstallPlanning = false; if (!_lifetime.IsCancellationRequested) UpdateButtons(); }
+    }
 
     private void Search_Changed(object sender, TextChangedEventArgs e)
     {
@@ -226,6 +245,10 @@ public partial class MainWindow : Window
     private void UpdateButtons()
     {
         if (MeasureButton == null) return;
+        if (UninstallButton != null) UninstallButton.IsEnabled = !_loading && !_exporting && !_uninstallPlanning && _directoryScan == null
+            && _measurement == null && AppsGrid.SelectedItem is AppRow selected && !selected.IsPortableCandidate
+            && (selected.Source == "桌面应用" && selected.UninstallRegistration != null
+                || selected.Source == "商店 / MSIX 应用" && !string.IsNullOrWhiteSpace(selected.PackageFullName));
         RefreshButton.IsEnabled = !_loading && _directoryScan == null && _measurement == null && !_exporting;
         ScanButton.IsEnabled = !_loading && _measurement == null && !_exporting;
         ExportButton.IsEnabled = !_loading && _directoryScan == null && _measurement == null && !_exporting && _view?.Count > 0;

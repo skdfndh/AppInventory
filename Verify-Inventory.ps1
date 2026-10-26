@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+if ($env:GITHUB_ACTIONS -ne 'true') { throw 'Full verification is restricted to an isolated CI environment. Do not run installation or registry tests on a daily-use computer.' }
 $taskRoot = $PSScriptRoot
 $logRoot = Join-Path $taskRoot ('logs\inventory-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 New-Item -ItemType Directory -Path $logRoot | Out-Null
@@ -17,6 +18,8 @@ foreach ($checkMode in @('--self-test', '--smoke-read')) {
     if ($report.checks) { $report.checks | ForEach-Object { Write-Output ('[OK] ' + $_) } }
     else { Get-Content -LiteralPath $resultPath -Raw }
     if ($testProcess.ExitCode -ne 0) {
+        $progressPath = $resultPath + '.progress.jsonl'
+        if (Test-Path -LiteralPath $progressPath) { Get-Content -LiteralPath $progressPath -Tail 12 }
         Get-Content -LiteralPath $resultPath -Raw
         throw ('Check failed: ' + $checkMode + ', exit=' + $testProcess.ExitCode)
     }
