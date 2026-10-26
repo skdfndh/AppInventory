@@ -10,14 +10,14 @@ if ($packageHash -ne $expectedHash) { throw 'Package checksum mismatch.' }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::OpenRead($resolvedPackage)
 try {
-    $unexpected = @($archive.Entries | Where-Object { $_.FullName -match '(?i)(^|/)(settings\.json|snapshot\.json|task\.bin|uninstall-tasks|read-only-fixtures|portable-fixtures|logs)(/|$)' -or $_.FullName -match '(?i)(^|/)\.AppInventory-Quarantine-' })
+    $unexpected = @($archive.Entries | Where-Object { $_.FullName -match '(?i)(^|/)(settings\.json|snapshot\.json|task\.bin|uninstall-tasks|read-only-fixtures|portable-fixtures|logs)(/|$)' -or $_.FullName -match '(?i)(^|/)\.AppInventory-Quarantine-|\.(pfx|p12|pem|key|log|csv)$' })
     if ($unexpected.Count -gt 0) { throw 'Package contains local data or test fixtures.' }
 } finally { $archive.Dispose() }
 $qaRoot = Join-Path $PSScriptRoot ('artifacts\package-check\' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff'))
 Expand-Archive -LiteralPath $resolvedPackage -DestinationPath $qaRoot
 $packageFolder = [IO.Path]::GetFileNameWithoutExtension($resolvedPackage)
 $appRoot = Join-Path $qaRoot $packageFolder
-foreach ($required in @('AppInventory.exe', 'AppInventory.runtimeconfig.json', 'LICENSE.txt', '使用说明.md', '第三方声明\BCU-Licence.txt', '第三方声明\BCU-NOTICE.txt', '第三方声明\修改说明.md', '第三方声明\TaskScheduler-LICENSE.md', '测试组件\TestApplication.exe', '测试组件\RegisteredUninstaller.exe')) {
+foreach ($required in @('AppInventory.exe', 'AppInventory.runtimeconfig.json', 'LICENSE.txt', '使用说明.md', '第三方声明\BCU-Licence.txt', '第三方声明\BCU-NOTICE.txt', '第三方声明\修改说明.md', '第三方声明\TaskScheduler-LICENSE.md', '测试组件\TestApplication.exe', '测试组件\RegisteredUninstaller.exe', '测试组件\Create-MsixFixture.ps1')) {
     if (-not (Test-Path -LiteralPath (Join-Path $appRoot $required))) { throw ('Missing packaged file: ' + $required) }
 }
 $runtimeConfig = Get-Content -LiteralPath (Join-Path $appRoot 'AppInventory.runtimeconfig.json') -Raw | ConvertFrom-Json

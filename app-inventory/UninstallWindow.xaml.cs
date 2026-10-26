@@ -32,19 +32,22 @@ public partial class UninstallWindow : Window
     {
         if (RunWorkflowButton == null) return;
         var state = _workflow?.State;
-        RunWorkflowButton.IsEnabled = !_busy && _prepared && AcceptRisk.IsChecked == true && ConfirmName.Text == state?.Plan.Installation.Name;
+        RunWorkflowButton.IsEnabled = !_busy && _prepared && AcceptRisk.IsChecked == true && ConfirmName.Text == state?.Plan.Name;
         StopWaitButton.IsEnabled = _busy && _wait != null;
         StopWaitButton.Content = _executing ? "停止等待（不终止卸载器）" : "取消文件检查";
         AcceptRisk.IsEnabled = ConfirmName.IsEnabled = ElevateRequest.IsEnabled = !_busy && _prepared;
+        if (state?.Plan.Package != null) { ElevateRequest.IsChecked = false; ElevateRequest.IsEnabled = false; }
         RefreshTaskButton.IsEnabled = LoadWorkflowButton.IsEnabled = !_busy;
         PreviewResidualButton.IsEnabled = !_busy && state?.Result.Status == UninstallStatus.Verified && !_workflow.IsRunning
-            && state.Isolation is "未隔离" or "已恢复";
+            && state.Plan.Package == null && state.Isolation is "未隔离" or "已恢复";
         IsolateResidualButton.IsEnabled = !_busy && _previewed && AcceptResidual.IsChecked == true && !_workflow.IsRunning;
         RestoreResidualButton.IsEnabled = !_busy && state?.Isolation is "准备隔离" or "已隔离" or "准备恢复";
         ExportWorkflowButton.IsEnabled = !_busy && state != null && !_workflow.IsRunning;
         if (state == null) { WorkflowPlanText.Text = "载入历史任务以查看结果或恢复隔离文件。"; return; }
         var plan = state.Plan;
-        WorkflowPlanText.Text = $"应用：{plan.Installation.Name}\n版本：{plan.Installation.Version}\n发布者：{plan.Installation.Publisher}\n\n记录：{plan.Installation.Identity.Hive} / {plan.Installation.Identity.View} / {plan.Installation.Identity.SubKey}\n安装目录：{plan.Installation.InstallPath}\n\n执行文件：{plan.Command.Executable}\n参数：{plan.Command.Arguments}\nSHA256：{plan.ExecutableHash}\n{plan.Signature}\n\n独立核验：{(plan.Command.IsMsi ? "Windows Installer 产品状态" : plan.MainExecutable.Length > 0 ? plan.MainExecutable : "缺少独立主程序，退出后只能标记结果待确认，不能清理")}\n\n任务：{state.Id}";
+        WorkflowPlanText.Text = plan.Package is { } package
+            ? $"应用：{package.Name}\n版本：{package.Version}\n发布者：{package.Publisher}\n\n完整包标识：{package.FullName}\n包族：{package.FamilyName}\n范围：仅当前 Windows 用户\n调用：Windows PackageManager.RemovePackageAsync\n{plan.Signature}\n\nWindows 会管理包文件与用户数据，也可能清理不再被其他包使用的依赖。本工具不保证恢复包数据，不操作其他用户的注册或手动隔离 WindowsApps。\n\n任务：{state.Id}"
+            : $"应用：{plan.Installation.Name}\n版本：{plan.Installation.Version}\n发布者：{plan.Installation.Publisher}\n\n记录：{plan.Installation.Identity.Hive} / {plan.Installation.Identity.View} / {plan.Installation.Identity.SubKey}\n安装目录：{plan.Installation.InstallPath}\n\n执行文件：{plan.Command.Executable}\n参数：{plan.Command.Arguments}\nSHA256：{plan.ExecutableHash}\n{plan.Signature}\n\n独立核验：{(plan.Command.IsMsi ? "Windows Installer 产品状态" : plan.MainExecutable.Length > 0 ? plan.MainExecutable : "缺少独立主程序，退出后只能标记结果待确认，不能清理")}\n\n任务：{state.Id}";
         WorkflowEvents.Text = string.Join("\n\n", state.Events.Select(item => $"{item.Time.ToLocalTime():yyyy-MM-dd HH:mm:ss} · {item.Action}\n{item.Detail}"));
         WorkflowStatus.Text = state.Result.Label + " · " + state.Result.Message + " · 隔离：" + state.Isolation
             + (_notice.Length > 0 ? "\n" + _notice : "");

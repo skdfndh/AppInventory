@@ -12,7 +12,10 @@ namespace AppInventory;
 
 internal enum UninstallStatus { Prepared, Running, Cancelled, Failed, RebootRequired, Unconfirmed, Verified }
 internal sealed record WorkflowPlan(InstalledSnapshot Installation, UninstallCommand Command, string ExecutableHash,
-    string Signature, string MainExecutable, string MainHash);
+    string Signature, string MainExecutable, string MainHash, PackageSnapshot Package = null)
+{
+    public string Name => Package?.Name ?? Installation.Name;
+}
 internal sealed record WorkflowResult(UninstallStatus Status, int? ExitCode, string Message)
 {
     public string Label => Status switch
@@ -36,7 +39,7 @@ internal sealed class UninstallWorkflow
     private Task<WorkflowResult> _completion;
     internal WorkflowState State { get { lock (_gate) return _state; } }
     internal string Root => Path.Combine(StorageRoot(_fixture), State.Id);
-    internal string InstallPath => State.Plan.Installation.InstallPath.Trim().Trim('"');
+    internal string InstallPath => (State.Plan.Package?.Location ?? State.Plan.Installation.InstallPath).Trim().Trim('"');
     internal string Quarantine => Path.Combine(Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(InstallPath))!, ".AppInventory-Quarantine-" + State.Id);
     internal bool IsRunning => _completion is { IsCompleted: false } || ProcessMatches(State);
 
@@ -44,6 +47,11 @@ internal sealed class UninstallWorkflow
 
     internal static UninstallWorkflow Prepare(AppRow row, bool fixture = false)
     {
+        if (row.Source == "商店 / MSIX 应用" && !row.IsPortableCandidate)
+        {
+            if (!PackageUninstall.Enabled && !fixture) throw new InvalidOperationException("商店卸载仍在隔离验收，当前入口未开放。");
+            return Create(PackageUninstall.Prepare(row), fixture);
+        }
         if (row.IsPortableCandidate || row.Source != "桌面应用" || row.UninstallRegistration == null)
             throw new InvalidOperationException("本次仅支持有当前系统卸载记录的桌面应用。商店及便携候选不执行。");
         var identity = InstallIdentity.Parse(row.UninstallRegistration.RegistryPath);
@@ -63,6 +71,11 @@ internal sealed class UninstallWorkflow
             || !Path.IsPathFullyQualified(entry.InstallPath) || !PortableScanner.IsWithin(main, entry.InstallPath)) main = "";
         var plan = new WorkflowPlan(entry, command, UninstallFiles.Hash(command.Executable), InstallerNative.Signature(command.Executable),
             main, main.Length == 0 ? "" : UninstallFiles.Hash(main));
+        return Create(plan, fixture);
+    }
+
+    private static UninstallWorkflow Create(WorkflowPlan plan, bool fixture)
+    {
         var state = new WorkflowState(1, Guid.NewGuid().ToString("N"), plan, DateTimeOffset.UtcNow, null, null, null,
             new(UninstallStatus.Prepared, null, "请核对目标、命令、摘要和签名；确认后调用厂商卸载器。"), new(), new(), "未隔离");
         var workflow = new UninstallWorkflow(state, fixture, true);
@@ -78,7 +91,7 @@ internal sealed class UninstallWorkflow
         if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException("任务记录过大。");
         var json = ProtectedData.Unprotect(File.ReadAllBytes(path), null, DataProtectionScope.CurrentUser);
         var state = JsonSerializer.Deserialize<WorkflowState>(json, CatalogStorage.JsonOptions);
-        if (state == null || state.Schema != 1 || state.Id != id || state.Plan?.Installation == null || state.Result == null
+        if (state == null || state.Schema != 1 || state.Id != id || state.Plan == null || state.Plan.Installation == null && state.Plan.Package == null || state.Result == null
             || state.Events == null || state.Residuals == null || state.Isolation == null) throw new InvalidDataException("任务记录不完整。");
         return new(state, fixture, false);
     }
@@ -99,19 +112,24 @@ internal sealed class UninstallWorkflow
         {
             if (!_livePlan || _completion != null || State.Result.Status != UninstallStatus.Prepared)
                 throw new InvalidOperationException("此计划已使用或来自历史记录，必须重新预检。");
-            if (!accepted || typedName != State.Plan.Installation.Name) throw new InvalidOperationException("必须确认风险并准确输入本次应用名称。");
+            if (!accepted || typedName != State.Plan.Name) throw new InvalidOperationException("必须确认风险并准确输入本次应用名称。");
             stopWaiting.ThrowIfCancellationRequested();
             var lease = AcquireGlobal();
             try
             {
                 var plan = State.Plan;
-                if (plan.Installation.Identity.Read() != plan.Installation || UninstallCommand.Parse(plan.Installation.Command) != plan.Command
+                if (plan.Package != null)
+                {
+                    if (elevate || PackageUninstall.Read(plan.Package.FullName) != plan.Package)
+                        throw new InvalidOperationException("包身份已改变或请求了不支持的跨用户权限，必须重新核对。");
+                }
+                else if (plan.Installation.Identity.Read() != plan.Installation || UninstallCommand.Parse(plan.Installation.Command) != plan.Command
                     || plan.Command.IsMsi && InstallerNative.MsiQueryProductState(plan.Command.ProductCode) != 5
                     || UninstallFiles.Hash(plan.Command.Executable) != plan.ExecutableHash
                     || plan.MainExecutable.Length > 0 && UninstallFiles.Hash(plan.MainExecutable) != plan.MainHash)
                     throw new InvalidOperationException("安装记录、卸载器或主程序已改变，必须重新预检和确认。");
                 _livePlan = false;
-                _completion = Task.Run(() => RunAsync(elevate, lease));
+                _completion = Task.Run(() => plan.Package == null ? RunAsync(elevate, lease) : RunPackageAsync(lease));
                 completion = _completion;
             }
             catch { lease.Dispose(); throw; }
@@ -178,6 +196,45 @@ internal sealed class UninstallWorkflow
         }
     }
 
+    private async Task<WorkflowResult> RunPackageAsync(FileStream lease)
+    {
+        using (lease)
+        {
+            try
+            {
+                using var current = Process.GetCurrentProcess();
+                lock (_gate)
+                {
+                    _state = _state with { StartedAt = DateTimeOffset.UtcNow, ProcessId = current.Id,
+                        ProcessStartTicks = current.StartTime.ToUniversalTime().Ticks,
+                        Result = new(UninstallStatus.Running, null, "Windows 正在移除当前用户的精确应用包，停止等待不取消部署操作。") };
+                    Record("开始包卸载", "通过 Windows 包管理接口移除当前用户的完整包身份，不调用脚本或其他用户卸载。");
+                }
+                await PackageUninstall.RemoveAsync(State.Plan.Package.FullName).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    var result = VerifyEvidence() ? new WorkflowResult(UninstallStatus.Verified, 0, "完整包标识已从当前用户注册中移除；包文件由 Windows 管理，不自行隔离 WindowsApps。")
+                        : new WorkflowResult(UninstallStatus.Unconfirmed, 0, "Windows 返回成功但当前用户的完整包身份仍存在，不执行额外清理。");
+                    _state = _state with { Result = result }; Record(result.Label, result.Message); return result;
+                }
+            }
+            catch (Exception ex)
+            {
+                lock (_gate)
+                {
+                    var result = new WorkflowResult(ex.HResult == unchecked((int)0x800704C7) ? UninstallStatus.Cancelled : UninstallStatus.Failed,
+                        ex.HResult, "Windows 包卸载没有完成核验：" + ex.Message);
+                    _state = _state with { Result = result }; Record(result.Label, result.Message); return result;
+                }
+            }
+        }
+    }
+
+    private void RequireDesktopResiduals()
+    {
+        if (State.Plan.Package != null) throw new InvalidOperationException("包目录由 Windows 管理，此入口不移动或恢复 WindowsApps 及包用户数据。");
+    }
+
     internal static WorkflowResult EvaluateExit(int code, bool evidence)
     {
         if (code is 3010 or 1641) return new(UninstallStatus.RebootRequired, code, "卸载器报告需要重启；暂不授权残留处理，不自动重启。");
@@ -190,6 +247,7 @@ internal sealed class UninstallWorkflow
     internal bool VerifyEvidence()
     {
         var plan = State.Plan;
+        if (plan.Package != null) return PackageUninstall.Find(plan.Package.FullName) == null;
         if (plan.Installation.Identity.Read() != null) return false;
         if (plan.Command.IsMsi) return InstallerNative.MsiQueryProductState(plan.Command.ProductCode) == -1;
         if (plan.MainExecutable.Length == 0) return false;
@@ -201,6 +259,7 @@ internal sealed class UninstallWorkflow
     {
         using var execution = AcquireGlobal();
         using var lease = AcquireTask();
+        RequireDesktopResiduals();
         RequireVerified();
         if (State.Isolation is not "未隔离" and not "已恢复") throw new InvalidOperationException("目录已进入隔离流程；请先处理恢复，保留原预览清单。");
         UninstallFiles.ValidateDirectory(InstallPath);
@@ -221,6 +280,7 @@ internal sealed class UninstallWorkflow
     {
         using var execution = AcquireGlobal();
         using var lease = AcquireTask();
+        RequireDesktopResiduals();
         if (!acknowledged) throw new InvalidOperationException("必须单独确认所选安装目录残留可能包含个人数据。");
         RequireVerified();
         UninstallFiles.ValidateDirectory(InstallPath);
@@ -241,6 +301,7 @@ internal sealed class UninstallWorkflow
     {
         using var execution = AcquireGlobal();
         using var lease = AcquireTask();
+        RequireDesktopResiduals();
         if (State.Isolation is not "准备隔离" and not "已隔离" and not "准备恢复") throw new InvalidOperationException("此任务没有可恢复的隔离记录。");
         UninstallFiles.ValidateDirectory(InstallPath);
         UninstallLab.CheckAncestors(Quarantine);

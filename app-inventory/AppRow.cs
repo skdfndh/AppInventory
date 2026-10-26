@@ -15,6 +15,8 @@ internal sealed class AppRow : INotifyPropertyChanged
     public string Source { get; init; } = "桌面应用";
     public string ExecutablePath { get; init; } = "";
     public string ProductId { get; init; } = "";
+    [JsonIgnore]
+    public string PackageFullName { get; init; } = "";
     // 卸载入口只来自本次系统读取，不能由历史快照重新授权。
     [JsonIgnore]
     public UninstallRegistration UninstallRegistration { get; init; }

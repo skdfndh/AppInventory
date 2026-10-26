@@ -57,5 +57,7 @@ internal static class UninstallPreflightChecks
             "合并历史测量与关联时保留本次卸载入口，不覆盖为旧命令");
         var forged = JsonSerializer.Deserialize<AppRow>("{\"Name\":\"合成快照\",\"UninstallRegistration\":{\"Command\":\"forged command\"}}", CatalogStorage.JsonOptions);
         check(forged.UninstallRegistration == null, "导入 JSON 无法注入卸载入口");
+        var forgedPackage = JsonSerializer.Deserialize<AppRow>("{\"Name\":\"合成商店快照\",\"Source\":\"商店 / MSIX 应用\",\"PackageFullName\":\"forged-package\"}", CatalogStorage.JsonOptions);
+        check(forgedPackage.PackageFullName.Length == 0, "历史 JSON 不能注入商店应用的完整卸载身份");
     }
 }

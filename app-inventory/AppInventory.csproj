@@ -23,6 +23,7 @@
     <Content Include="TaskScheduler-LICENSE.md" Link="第三方声明\TaskScheduler-LICENSE.md" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\artifacts\lab-fixture\TestApplication.exe" Link="测试组件\TestApplication.exe" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\artifacts\lab-fixture\RegisteredUninstaller.exe" Link="测试组件\RegisteredUninstaller.exe" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\lab-fixture\Create-MsixFixture.ps1" Link="测试组件\Create-MsixFixture.ps1" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <Target Name="BuildUninstallFixture" BeforeTargets="PrepareForBuild" Inputs="..\lab-fixture\Program.cs" Outputs="..\artifacts\lab-fixture\TestApplication.exe">
     <MakeDir Directories="..\artifacts\lab-fixture" />
@@ -39,6 +40,9 @@
     <GetFileHash Files="..\artifacts\lab-fixture\RegisteredUninstaller.exe" Algorithm="SHA256">
       <Output TaskParameter="Items" ItemName="RegisteredFixtureHash" />
     </GetFileHash>
+    <GetFileHash Files="..\lab-fixture\Create-MsixFixture.ps1" Algorithm="SHA256">
+      <Output TaskParameter="Items" ItemName="MsixFixtureScriptHash" />
+    </GetFileHash>
     <ItemGroup>
       <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
         <_Parameter1>LabFixtureSHA256</_Parameter1>
@@ -47,6 +51,10 @@
       <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
         <_Parameter1>RegisteredFixtureSHA256</_Parameter1>
         <_Parameter2>%(RegisteredFixtureHash.FileHash)</_Parameter2>
+      </AssemblyAttribute>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>MsixFixtureScriptSHA256</_Parameter1>
+        <_Parameter2>%(MsixFixtureScriptHash.FileHash)</_Parameter2>
       </AssemblyAttribute>
     </ItemGroup>
   </Target>

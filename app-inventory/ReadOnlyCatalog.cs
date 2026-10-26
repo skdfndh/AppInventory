@@ -80,7 +80,7 @@ internal static class ReadOnlyCatalog
                         Name = string.IsNullOrWhiteSpace(package.DisplayName) ? package.Id.Name : package.DisplayName,
                         Version = $"{version.Major}.{version.Minor}.{version.Build}.{version.Revision}",
                         Publisher = package.PublisherDisplayName ?? "", InstallPath = path,
-                        ProductId = package.Id.Name, PathSource = "Windows 包管理接口提供", Source = "商店 / MSIX 应用"
+                        ProductId = package.Id.Name, PackageFullName = package.Id.FullName, PathSource = "Windows 包管理接口提供", Source = "商店 / MSIX 应用"
                     };
                     SoftwareDescriptions.Apply(row, ReadPackageDescription(package, path, cancellationToken), "应用包显示说明 / 清单说明");
                     apps.Add(row);
