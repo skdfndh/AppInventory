@@ -37,6 +37,7 @@ internal static class InnoFixtureChecks
             PrivilegesRequired=lowest
             DisableProgramGroupPage=yes
             UninstallDisplayIcon={app}\TestApplication.exe
+            UninstallDisplayName={{name}}
             OutputDir={{root}}
             OutputBaseFilename=FixtureSetup
             Compression=lzma
@@ -62,6 +63,7 @@ internal static class InnoFixtureChecks
             Invoke(compiler, "/Qp", script);
             Invoke(Path.Combine(root, "FixtureSetup.exe"), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/SP-");
             var snapshot = identity.Read();
+            SelfTest.Progress($"Inno 安装核对：记录存在={snapshot != null}，名称匹配={snapshot?.Name == name}，目录匹配={snapshot?.InstallPath.TrimEnd('\\') == installed}，主程序存在={File.Exists(Path.Combine(installed, "TestApplication.exe"))}");
             check(snapshot?.Name == name && snapshot.InstallPath.TrimEnd('\\') == installed && File.Exists(Path.Combine(installed, "TestApplication.exe")),
                 "Inno 实际安装随机身份用户级专用包，精确身份与主程序一致");
             // 仅修改本夹具的新记录以适配无桌面 CI；普通应用仍使用原始标准入口。
